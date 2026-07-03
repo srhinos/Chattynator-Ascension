@@ -199,7 +199,7 @@ function addonTable.MessagesMonitorMixin:OnLoad()
       if lineID == formatter.lineID then
         local message = self.messages[index]
         found = message.id
-        message.text = formatter.Formatter(C_ChatInfo.GetChatLineText(lineID))
+        message.text = formatter.Formatter(C_ChatInfo.GetChatLineText(lineID)) or ""
         break
       end
     end
@@ -599,6 +599,9 @@ function addonTable.MessagesMonitorMixin:CleanStore(store, index)
   end
   for i = index + 1, #store do
     local data = store[i]
+    if data.text == nil then
+      data.text = "???"
+    end
     if data.text:find("|K.-|k") or (data.typeInfo.player and data.typeInfo.player.name:find("|K.-|k")) then
       data.text = data.text:gsub("|K.-|k", "???")
       data.text = data.text:gsub("|HBNplayer.-|h(.-)|h", "%1")
@@ -611,9 +614,6 @@ function addonTable.MessagesMonitorMixin:CleanStore(store, index)
     end
     if data.text:find("reportcensoredmessage:") then
       data.text = data.text:gsub("|Hreportcensoredmessage:.-|h.-|h", "[???]")
-    end
-    if data.text == nil then
-      data.text = "???"
     end
   end
   return #store
