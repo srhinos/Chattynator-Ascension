@@ -82,109 +82,88 @@ local hidden = CreateFrame("Frame")
 hidden:Hide()
 addonTable.hiddenFrame = hidden
 
+-- Fail-soft bootstrap: run each init block under pcall so one broken subsystem can't
+-- abort the whole addon. /chatty diag reports the per-block ok/FAIL recorded here.
+addonTable.diag = addonTable.diag or {}
+addonTable.diag.blocks = addonTable.diag.blocks or {}
+addonTable.diag.order = addonTable.diag.order or {}
+local function runBlock(name, fn)
+  local ok, err = pcall(fn)
+  addonTable.diag.blocks[name] = { ok = ok, err = ok and nil or tostring(err) }
+  addonTable.diag.order[#addonTable.diag.order + 1] = name
+  return ok
+end
+
 function addonTable.Core.Initialize()
-  addonTable.Config.InitializeData()
-  addonTable.Core.MigrateSettings()
+  -- Default so the login path never nil-indexes it if the chatframes block below fails.
+  addonTable.allChatFrames = addonTable.allChatFrames or {}
 
-  addonTable.SlashCmd.Initialize()
+  runBlock("config", function() addonTable.Config.InitializeData() end)
+  runBlock("migrate", function() addonTable.Core.MigrateSettings() end)
 
-  local validLinks = {
-    achievement = true,
-    api = false,
-    battlepet = false,
-    battlePetAbil = false,
-    calendarEvent = false,
-    channel = false,
-    clubFinder = false,
-    clubTicket = false,
-    community = false,
-    conduit = true,
-    currency = true,
-    death = false,
-    dungeonScore = true,
-    enchant = false,
-    garrfollower = false,
-    garrfollowerability = false,
-    garrmission = false,
-    instancelock = true,
-    item = true,
-    journal = false,
-    keystone = true,
-    levelup = false,
-    lootHistory = false,
-    mawpower = true,
-    outfit = false,
-    player = false,
-    playerCommunity = false,
-    BNplayer = false,
-    BNplayerCommunity = false,
-    quest = true,
-    shareachieve = false,
-    shareitem = false,
-    sharess = false,
-    spell = true,
-    storecategory = false,
-    talent = true,
-    talentbuild = false,
-    trade = false,
-    transmogappearance = false,
-    transmogillusion = false,
-    transmogset = false,
-    unit = true,
-    urlIndex = false,
-    worldmap = false,
-  }
+  runBlock("slashcmd", function() addonTable.SlashCmd.Initialize() end)
 
-  ChattynatorHyperlinkHandler:SetScript("OnHyperlinkEnter", function(_, hyperlink)
-    local type = hyperlink:match("^(.-):")
-    if validLinks[type] then
-      GameTooltip:SetOwner(ChattynatorHyperlinkHandler:GetParent(), "ANCHOR_CURSOR_RIGHT")
-      GameTooltip:SetHyperlink(hyperlink)
-      GameTooltip:Show()
-    end
+
+  runBlock("hyperlink", function()
+    ChattynatorHyperlinkHandler:SetScript("OnHyperlinkEnter", function(_, hyperlink)
+      -- Shared fail-soft setter (Compat.lua): allowlist-gated and pcall-guarded.
+      addonTable.SafeSetTooltipHyperlink(GameTooltip, ChattynatorHyperlinkHandler:GetParent(), "ANCHOR_CURSOR", hyperlink)
+    end)
+
+    ChattynatorHyperlinkHandler:SetScript("OnHyperlinkLeave", function()
+      GameTooltip:Hide()
+    end)
   end)
 
-  ChattynatorHyperlinkHandler:SetScript("OnHyperlinkLeave", function()
-    GameTooltip:Hide()
+  runBlock("messages", function()
+    addonTable.Messages = CreateFrame("Frame")
+    Mixin(addonTable.Messages, addonTable.MessagesMonitorMixin)
+    addonTable.Messages:OnLoad()
   end)
 
-  addonTable.Messages = CreateFrame("Frame")
-  Mixin(addonTable.Messages, addonTable.MessagesMonitorMixin)
-  addonTable.Messages:OnLoad()
+  runBlock("skins", function() addonTable.Skins.Initialize() end)
 
-  addonTable.Skins.Initialize()
-
-  addonTable.allChatFrames = {}
-  addonTable.ChatFramePool = CreateFramePool("Frame", ChattynatorHyperlinkHandler, nil, nil, false, function(frame)
-    if not frame.OnLoad then
-      Mixin(frame, addonTable.Display.ChatFrameMixin)
-      frame:OnLoad()
-    end
-  end)
-  for id, _ in pairs(addonTable.Config.Get(addonTable.Config.Options.WINDOWS)) do
-    local chatFrame = addonTable.ChatFramePool:Acquire()
-    chatFrame:SetID(id)
-    chatFrame:Reset()
-    chatFrame:Show()
-    table.insert(addonTable.allChatFrames, chatFrame)
-  end
-
-  addonTable.CallbackRegistry:RegisterCallback("SettingChanged", function(_, settingName)
-    if settingName == addonTable.Config.Options.WINDOWS then
-      local windows = addonTable.Config.Get(settingName)
-      while #windows > #addonTable.allChatFrames do
-        local chatFrame = addonTable.ChatFramePool:Acquire()
-        chatFrame:SetID(#addonTable.allChatFrames + 1)
-        chatFrame:Reset()
-        chatFrame:Show()
-        table.insert(addonTable.allChatFrames, chatFrame)
+  runBlock("chatframes", function()
+    addonTable.allChatFrames = {}
+    -- 3.3.5: the native 4-arg CreateFramePool drops args 5/6, so the arg6 initializer
+    -- (Mixin+OnLoad) never runs and :Reset()/:SetID() nil-crash. Use the Compat bypass.
+    addonTable.ChatFramePool = Chattynator335_CreateFramePool("Frame", ChattynatorHyperlinkHandler, nil, nil, false, function(frame)
+      if not frame.OnLoad then
+        Mixin(frame, addonTable.Display.ChatFrameMixin)
+        frame:OnLoad()
       end
+    end)
+    for id, _ in pairs(addonTable.Config.Get(addonTable.Config.Options.WINDOWS)) do
+      local chatFrame = addonTable.ChatFramePool:Acquire()
+      chatFrame:SetID(id)
+      chatFrame:Reset()
+      chatFrame:Show()
+      table.insert(addonTable.allChatFrames, chatFrame)
     end
   end)
 
-  addonTable.CopyFrame = CreateFrame("Frame", "ChattynatorCopyChatDialog", UIParent, "ButtonFrameTemplate")
-  Mixin(addonTable.CopyFrame, addonTable.Display.CopyChatMixin)
-  addonTable.CopyFrame:OnLoad()
+  runBlock("settingcallback", function()
+    addonTable.CallbackRegistry:RegisterCallback("SettingChanged", function(_, settingName)
+      if settingName == addonTable.Config.Options.WINDOWS then
+        local windows = addonTable.Config.Get(settingName)
+        while #windows > #addonTable.allChatFrames do
+          local chatFrame = addonTable.ChatFramePool:Acquire()
+          chatFrame:SetID(#addonTable.allChatFrames + 1)
+          chatFrame:Reset()
+          chatFrame:Show()
+          table.insert(addonTable.allChatFrames, chatFrame)
+        end
+      end
+    end)
+  end)
+
+  runBlock("copyframe", function()
+    -- 3.3.5: ButtonFrameTemplate is Cata+ (unknown template errors at load); build the
+    -- classic-backdrop ButtonFrame via the Widgets shim.
+    addonTable.CopyFrame = addonTable.Widgets.CreateButtonFrame("ChattynatorCopyChatDialog", UIParent)
+    Mixin(addonTable.CopyFrame, addonTable.Display.CopyChatMixin)
+    addonTable.CopyFrame:OnLoad()
+  end)
 
   SlashCmdList["ChattynatorCopy"] = function()
     if not addonTable.allChatFrames[1] then
@@ -197,13 +176,13 @@ function addonTable.Core.Initialize()
   end
   SLASH_ChattynatorCopy1 = "/copy"
 
-  addonTable.Core.ApplyOverrides()
-  addonTable.Core.InitializeChatCommandLogging()
-  addonTable.Modifiers.InitializeShortenChannels()
-  addonTable.Modifiers.InitializeClassColors()
-  addonTable.Modifiers.InitializeURLs()
-  addonTable.Modifiers.InitializeRedundantText()
-  addonTable.CustomiseDialog.Initialize()
+  runBlock("seizure", function() addonTable.Core.ApplyOverrides() end)
+  runBlock("commandlogging", function() addonTable.Core.InitializeChatCommandLogging() end)
+  runBlock("mod_shortenchannels", function() addonTable.Modifiers.InitializeShortenChannels() end)
+  runBlock("mod_classcolors", function() addonTable.Modifiers.InitializeClassColors() end)
+  runBlock("mod_urls", function() addonTable.Modifiers.InitializeURLs() end)
+  runBlock("mod_redundanttext", function() addonTable.Modifiers.InitializeRedundantText() end)
+  runBlock("customisedialog", function() addonTable.CustomiseDialog.Initialize() end)
 end
 
 function addonTable.Core.MakeChatFrame()
@@ -239,9 +218,13 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", function(_, eventName, data)
   if eventName == "ADDON_LOADED" and data == "Chattynator" then
     addonTable.Core.Initialize()
-    addonTable.API.Initialize()
+    -- Wrap API.Initialize so a failure can't abort the rest of ADDON_LOADED.
+    runBlock("api", function() addonTable.API.Initialize() end)
   elseif eventName == "PLAYER_LOGIN" then
     C_Timer.After(1, addonTable.Core.CompatibilityWarnings)
-    addonTable.allChatFrames[1]:UpdateEditBox()
+    -- Guard: the chatframes block may have failed, leaving the pool empty.
+    if addonTable.allChatFrames[1] then
+      addonTable.allChatFrames[1]:UpdateEditBox()
+    end
   end
 end)

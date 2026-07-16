@@ -31,7 +31,9 @@ function addonTable.Display.CopyChatMixin:OnLoad()
   self:EnableMouse(true)
   self:SetScript("OnMouseWheel", function() end)
 
-  self.textBox = CreateFrame("Frame", nil, self, "ScrollingEditBoxTemplate")
+  -- 3.3.5: ScrollingEditBoxTemplate (retail 10.x) doesn't exist; build the equivalent scrolling
+  -- multiline editbox via the Widgets wrapper so the rest of this file is unchanged.
+  self.textBox = addonTable.Widgets.CreateScrollingEditBox(nil, self)
   self.textBox:SetPoint("TOPLEFT", addonTable.Constants.ButtonFrameOffset + 10, -30)
   self.textBox:SetPoint("BOTTOMRIGHT", -10, 10)
 
@@ -80,6 +82,20 @@ function addonTable.Display.CopyChatMixin:OnLoad()
         table.remove(self.clicks, 1)
       end
   end)
+
+  -- "Jump to bottom" button: returns to the newest line after scrolling up. Stock scrollbar
+  -- down-arrow art, anchored left of the scrollbar gutter.
+  local jumpToBottom = CreateFrame("Button", nil, self)
+  jumpToBottom:SetSize(24, 24)
+  jumpToBottom:SetPoint("BOTTOMRIGHT", self.textBox, "BOTTOMRIGHT", -24, 4)
+  jumpToBottom:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up")
+  jumpToBottom:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Down")
+  jumpToBottom:SetHighlightTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Highlight")
+  jumpToBottom:SetFrameLevel(self.textBox:GetFrameLevel() + 10)
+  jumpToBottom:SetScript("OnClick", function()
+    self.textBox:GetScrollBox():ScrollToEnd()
+  end)
+  self.jumpToBottom = jumpToBottom
 
   addonTable.Skins.AddFrame("ButtonFrame", self, {"copyChat"})
 end

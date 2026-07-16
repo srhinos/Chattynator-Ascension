@@ -43,6 +43,9 @@ UIScaleMonitor:SetScript("OnEvent", function()
   end)
 end)
 
+-- Active only when GW2_UI is loaded. Textures are .tga; retail-only skin methods
+-- (GetUnboundedStringWidth, the Alpha-animation setters) are shimmed in Core/Compat.lua;
+-- InsetFrame draws its border via Widgets.ApplyBackdrop.
 local skinners = {
   Button = function(frame)
     (frame.GwSkinButton or frame.SkinButton)(frame, false, true, false, false, false, false)
@@ -122,7 +125,7 @@ local skinners = {
     end)
 
     tab.Left = tab:CreateTexture(nil, "BACKGROUND")
-    tab.Left:SetTexture("Interface/AddOns/Chattynator/Assets/ChatTabLeft")
+    tab.Left:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatTabLeft")
     tab.Left:SetHeight(24)
     tab.Left:SetWidth(13)
     tab.Left:SetTexture("Interface/AddOns/GW2_UI/textures/chat/chattabactiveleft")
@@ -449,13 +452,13 @@ local skinners = {
       button.Icon = button:CreateTexture(nil, "ARTWORK")
       button.Icon:SetSize(18, 18)
       if tags.search then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/Search.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Search.tga")
         button.Icon:SetSize(15, 15)
         button.HoverIcon:SetTexture(button.Icon:GetTexture())
         button.HoverIcon:SetVertexColor(hoverColor.r, hoverColor.g, hoverColor.b)
         button.HoverIcon:SetSize(15, 15)
       elseif tags.copy then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/Copy.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Copy.tga")
         button.Icon:SetSize(15, 15)
         button.HoverIcon:SetTexture(button.Icon:GetTexture())
         button.HoverIcon:SetVertexColor(hoverColor.r, hoverColor.g, hoverColor.b)
@@ -464,7 +467,7 @@ local skinners = {
         button.Icon:SetTexture("Interface/AddOns/GW2_UI/textures/icons/MainMenuMicroButton-Down")
         button.HoverIcon:SetTexture("Interface/AddOns/GW2_UI/textures/icons/MainMenuMicroButton-Up")
       elseif tags.scrollToEnd then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/ScrollToBottom.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ScrollToBottom.tga")
         button.HoverIcon:SetTexture("Interface/AddOns/GW2_UI/textures/uistuff/arrowdown_down")
       end
       button.Icon:SetVertexColor(intensity.r, intensity.g, intensity.b)
@@ -546,9 +549,9 @@ local skinners = {
       frame.NineSlice:Hide()
     end
     if GW.BackdropTemplates and GW.BackdropTemplates.ColorableBorderOnly then
-      Mixin(frame, BackdropTemplateMixin)
-      frame:SetBackdrop(GW.BackdropTemplates.ColorableBorderOnly)
-      frame:SetBackdropBorderColor(0, 0, 0, 1)
+      -- 3.3.5: BackdropTemplateMixin is absent and the backported SetBackdrop is broken;
+      -- draw the border-only backdrop via Widgets.ApplyBackdrop instead.
+      addonTable.Widgets.ApplyBackdrop(frame, {0, 0, 0, 0}, {0, 0, 0, 1}, 1)
     end
   end,
   Divider = function(tex)

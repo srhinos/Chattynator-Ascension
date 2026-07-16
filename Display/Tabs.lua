@@ -27,8 +27,6 @@ function addonTable.Display.TabsBarMixin:OnLoad()
   self:SetupPool()
   self.customHolders = {}
 
-  self:SetScript("OnEvent", self.OnEvent)
-
   addonTable.CallbackRegistry:RegisterCallback("SkinLoaded", function()
     self:PositionTabs()
   end)
@@ -75,11 +73,17 @@ function addonTable.Display.TabsBarMixin:StartDragging(index)
   local origin = GetCursorPosition() / UIParent:GetEffectiveScale()
   local prevLeft = self.Tabs[index]:GetLeft()
   self.dragIndex = index
-  self:RegisterEvent("GLOBAL_MOUSE_UP")
+  -- 3.3.5 has no GLOBAL_MOUSE_UP event; drag-end is polled from the mouse button in the
+  -- OnUpdate below instead.
   local rightLimit = self.Tabs[self.tabsEnd]:GetRight() + 1
   local leftLimit = self.Tabs[1]:GetLeft()
 
   self:SetScript("OnUpdate", function()
+    -- Terminate the drag once the mouse button is released (replaces GLOBAL_MOUSE_UP).
+    if not IsMouseButtonDown("LeftButton") and not IsMouseButtonDown("RightButton") then
+      self:EndDragging()
+      return
+    end
     local dragButton = self.Tabs[index]
     dragButton:SetFrameStrata("HIGH") -- Ensure dragged tab renders above all other tabs, avoids weird overlap artifacts
 
@@ -139,17 +143,15 @@ end
 
 function addonTable.Display.TabsBarMixin:EndDragging(index)
   self.Tabs[self.dragIndex]:SetFrameStrata("MEDIUM")
-  self:UnregisterEvent("GLOBAL_MOUSE_UP")
+  -- OnUpdate poll drives drag-end (no GLOBAL_MOUSE_UP); just clear it here.
   self:SetScript("OnUpdate", nil)
   self:PositionTabs()
 end
 
-function addonTable.Display.TabsBarMixin:OnEvent()
-  self:EndDragging()
-end
-
 function addonTable.Display.TabsBarMixin:SetupPool()
-  self.tabsPool = CreateFramePool("Button", self, nil, nil, false,
+  -- 3.3.5: 6-arg pool bypass. The native 4-arg CreateFramePool drops arg6 (the initializer),
+  -- so tab buttons would never get SetSelected/SetColor -> nil-method crash.
+  self.tabsPool = Chattynator335_CreateFramePool("Button", self, nil, nil, false,
     function(tabButton)
       tabButton:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
       tabButton:RegisterForDrag("LeftButton", "RightButton")

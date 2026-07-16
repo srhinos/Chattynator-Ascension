@@ -2,6 +2,11 @@
 local addonTable = select(2, ...)
 
 local function Clean(text)
+  -- 3.3.5: patterns are built at load from GlobalStrings; if one is missing return a byte
+  -- that never appears in chat text so the pattern just never matches (vs a nil:gsub crash).
+  if type(text) ~= "string" then
+    return "\255"
+  end
   return "^" .. text
     :gsub("%%s", "\as")
     :gsub("%%s", "\ad")

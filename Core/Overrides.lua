@@ -28,36 +28,17 @@ function addonTable.Core.ApplyOverrides()
       end)
     end)
   end
-  if ChatFrameUtil and ChatFrameUtil.ShowChatChannelContextMenu then
-    hooksecurefunc(ChatFrameUtil, "ShowChatChannelContextMenu", ChannelDropDown)
-  elseif ChatChannelDropdown_Show then
-    hooksecurefunc("ChatChannelDropdown_Show", ChannelDropDown)
+  -- 3.3.5: no ChatFrameUtil; hook the legacy global. Note the casing -- the real global
+  -- is ChatChannelDropDown_Show (capital D); upstream's lowercase spelling never matched.
+  if ChatChannelDropDown_Show then
+    hooksecurefunc("ChatChannelDropDown_Show", ChannelDropDown)
   end
 
-  do
-    local actualChatFrame
-    hooksecurefunc(UnitPopupPopoutChatButtonMixin, "GetText", function()
-      for _, frame in ipairs(addonTable.allChatFrames) do
-        if frame:IsMouseOver() then
-          actualChatFrame = frame
-        end
-      end
-    end)
-  end
+  -- Removed an unguarded hook on the retail-only UnitPopupPopoutChatButtonMixin (nil on
+  -- 3.3.5, aborted the whole seizure); the block was dead even on retail (result unused).
 
-  if ChatFrameUtil and ChatFrameUtil.ChatPageUp then
-    ChatFrameUtil.ChatPageUp = function()
-      addonTable.allChatFrames[1].ScrollingMessages:PageUp()
-    end
-
-    ChatFrameUtil.ChatPageDown = function()
-      addonTable.allChatFrames[1].ScrollingMessages:PageDown()
-    end
-
-    ChatFrameUtil.ScrollToBottom = function()
-      addonTable.allChatFrames[1].ScrollingMessages:ScrollToBottom()
-    end
-  elseif ChatFrame_ChatPageUp then
+  -- 3.3.5: override the legacy ChatFrame_* scroll globals (no ChatFrameUtil).
+  if ChatFrame_ChatPageUp then
     ChatFrame_ChatPageUp = function()
       addonTable.allChatFrames[1].ScrollingMessages:PageUp()
     end
@@ -141,44 +122,23 @@ function addonTable.Core.ApplyOverrides()
     end
   end)
 
-  EventUtil.ContinueOnAddOnLoaded("Blizzard_Communities", function()
-    C_Timer.After(0, function()
-      local font, height, flags = _G[addonTable.Messages.font]:GetFont()
-      CommunitiesFrame.Chat.MessageFrame:SetFont(font, height * addonTable.Messages.scalingFactor, flags)
-    end)
-  end)
+  -- Removed the Blizzard_Communities integration: that addon never loads on 3.3.5.
 
-  if ChatFrameUtil and ChatFrameUtil.DeactivateChat then
-    hooksecurefunc(ChatFrameUtil, "DeactivateChat", function(editBox)
-      if editBox == ChatFrame1EditBox then
-        local visible = addonTable.Config.Get(addonTable.Config.Options.KEEP_EDIT_BOX_VISIBLE)
-        editBox:SetShown(visible)
-        if visible then
-          editBox:SetAlpha(1)
-        end
-      else
-        editBox:Hide()
+  -- 3.3.5: hook the legacy ChatEdit_* globals (no ChatFrameUtil).
+  hooksecurefunc("ChatEdit_DeactivateChat", function(editBox)
+    if editBox == ChatFrame1EditBox then
+      local visible = addonTable.Config.Get(addonTable.Config.Options.KEEP_EDIT_BOX_VISIBLE)
+      editBox:SetShown(visible)
+      if visible then
+        editBox:SetAlpha(1)
       end
-    end)
-    hooksecurefunc(ChatFrameUtil, "ActivateChat", function(editBox)
-      editBox:Show()
-    end)
-  else
-    hooksecurefunc("ChatEdit_DeactivateChat", function(editBox)
-      if editBox == ChatFrame1EditBox then
-        local visible = addonTable.Config.Get(addonTable.Config.Options.KEEP_EDIT_BOX_VISIBLE)
-        editBox:SetShown(visible)
-        if visible then
-          editBox:SetAlpha(1)
-        end
-      else
-        editBox:Hide()
-      end
-    end)
-    hooksecurefunc("ChatEdit_ActivateChat", function(editBox)
-      editBox:Show()
-    end)
-  end
+    else
+      editBox:Hide()
+    end
+  end)
+  hooksecurefunc("ChatEdit_ActivateChat", function(editBox)
+    editBox:Show()
+  end)
 
   addonTable.CallbackRegistry:RegisterCallback("SettingChanged", function(_, settingName)
     if settingName == addonTable.Config.Options.KEEP_EDIT_BOX_VISIBLE then
@@ -206,8 +166,13 @@ function addonTable.Core.ApplyOverrides()
           r:SetTextColor(color.r, color.g, color.b)
         end
       end
-      editBox.header:SetTextColor(color.r, color.g, color.b)
-      editBox.headerSuffix:SetTextColor(color.r, color.g, color.b)
+      if editBox.header then
+        editBox.header:SetTextColor(color.r, color.g, color.b)
+      end
+      -- 3.3.5: headerSuffix is a retail-era editbox region; guard.
+      if editBox.headerSuffix then
+        editBox.headerSuffix:SetTextColor(color.r, color.g, color.b)
+      end
       if editBox.focusLeft then
         editBox.focusLeft:SetVertexColor(color.r, color.g, color.b)
         editBox.focusRight:SetVertexColor(color.r, color.g, color.b)
@@ -215,9 +180,6 @@ function addonTable.Core.ApplyOverrides()
       end
     end
   end
-  if ChatFrame1EditBox.UpdateHeader then
-    hooksecurefunc(ChatFrame1EditBox, "UpdateHeader", UpdateHeader)
-  else
-    hooksecurefunc("ChatEdit_UpdateHeader", UpdateHeader)
-  end
+  -- 3.3.5: editboxes have no UpdateHeader method; hook the legacy global instead.
+  hooksecurefunc("ChatEdit_UpdateHeader", UpdateHeader)
 end

@@ -35,8 +35,9 @@ function addonTable.Modifiers.InitializeURLs()
   end)
 end
 
-EventRegistry:RegisterCallback("SetItemRef", function(_, link)
-  local url = link:match("^addon:chattynatorurllink:(.*)")
+-- 3.3.5: no EventRegistry; hook SetItemRef directly to catch the chattynatorurllink hyperlink.
+hooksecurefunc("SetItemRef", function(link, text, button)
+  local url = link and link:match("^addon:chattynatorurllink:(.*)")
   if url then
     addonTable.Dialogs.ShowCopy(url)
   end

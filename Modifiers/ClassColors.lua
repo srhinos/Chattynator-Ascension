@@ -2,10 +2,19 @@
 local addonTable = select(2, ...)
 
 local playerPattern = "(|Hplayer:[^|]+|h%[?)([^|%[%]][^c%[%]][^%[%]]-)(%]?|h)"
+-- 3.3.5: grey fallback for a custom-class token missing from both color tables (else nil-index crash).
+local GREY_CLASS_COLOR = { r = 0.62, g = 0.62, b = 0.62 }
 local function Color(data)
   if data.typeInfo.player and data.typeInfo.player.class then
-    local color = (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS)[data.typeInfo.player.class]
-    local hex = CreateColor(color.r, color.g, color.b):GenerateHexColorMarkup()
+    local token = data.typeInfo.player.class
+    -- classFile token keys CUSTOM_CLASS_COLORS -> RAID_CLASS_COLORS -> grey; this runs
+    -- unwrapped on the per-message path, so a nil color would crash.
+    local color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[token])
+      or (RAID_CLASS_COLORS and RAID_CLASS_COLORS[token])
+      or GREY_CLASS_COLOR
+    -- 3.3.5: format the hex directly; ColorMixin/CreateColor is unreliable and the color
+    -- tables carry no mixin methods.
+    local hex = ("|cff%02x%02x%02x"):format(color.r * 255, color.g * 255, color.b * 255)
     data.text = data.text:gsub(playerPattern, "%1" .. hex .. "%2|r%3")
   end
 end
