@@ -23,16 +23,33 @@ local chatFrames = {}
 local editBoxes = {}
 local chatButtons = {}
 
+-- Default skin. Textures are .tga (3.3.5 loads only TGA/BLP); retail-only skin methods
+-- (SetIgnoreParentAlpha, SetColorTexture, GetUnboundedStringWidth, the Alpha-animation
+-- setters) are shimmed in Core/Compat.lua.
+
+-- 3.3.5: SetNormalTexture can leave Get*Texture() nil (and needs a backslash path), so
+-- guard the recolor instead of chaining off the getter.
+local ChatButtonTexturePath = "Interface\\AddOns\\Chattynator\\Assets\\ChatButton.tga"
+local function StyleChatButtonTextures(button)
+  button:SetNormalTexture(ChatButtonTexturePath)
+  local nt = button:GetNormalTexture()
+  if nt then
+    nt:SetVertexColor(0.15, 0.15, 0.15)
+    nt:SetDrawLayer("BACKGROUND")
+  end
+  button:SetPushedTexture(ChatButtonTexturePath)
+  local pt = button:GetPushedTexture()
+  if pt then
+    pt:SetVertexColor(0.05, 0.05, 0.05)
+    pt:SetDrawLayer("BACKGROUND")
+  end
+end
+
 local skinners = {
   ChatButton = function(button, tags)
     table.insert(chatButtons, button)
     button:SetSize(26, 28)
-    button:SetNormalTexture("Interface/AddOns/Chattynator/Assets/ChatButton.png")
-    button:GetNormalTexture():SetVertexColor(0.15, 0.15, 0.15)
-    button:GetNormalTexture():SetDrawLayer("BACKGROUND")
-    button:SetPushedTexture("Interface/AddOns/Chattynator/Assets/ChatButton.png")
-    button:GetPushedTexture():SetVertexColor(0.05, 0.05, 0.05)
-    button:GetPushedTexture():SetDrawLayer("BACKGROUND")
+    StyleChatButtonTextures(button)
     button:ClearHighlightTexture()
 
     button:HookScript("OnEnter", function()
@@ -63,7 +80,7 @@ local skinners = {
 
     if tags.toasts then
       button.Icon = button.FriendsButton or button:CreateTexture(nil, "ARTWORK")
-      button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/ChatSocial.png")
+      button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatSocial.tga")
       button.Icon:SetVertexColor(intensity, intensity, intensity)
       button.Icon:SetDrawLayer("ARTWORK")
       button.Icon:SetSize(12, 12)
@@ -87,18 +104,13 @@ local skinners = {
         if not enableHooks then
           return
         end
-        button:SetNormalTexture("Interface/AddOns/Chattynator/Assets/ChatButton.png")
-        button:GetNormalTexture():SetVertexColor(0.15, 0.15, 0.15)
-        button:GetNormalTexture():SetDrawLayer("BACKGROUND")
-        button:SetPushedTexture("Interface/AddOns/Chattynator/Assets/ChatButton.png")
-        button:GetPushedTexture():SetVertexColor(0.05, 0.05, 0.05)
-        button:GetPushedTexture():SetDrawLayer("BACKGROUND")
+        StyleChatButtonTextures(button)
         button:ClearHighlightTexture()
         if state then
-          button.Icon:SetTexture("Interface/Addons/Chattynator/Assets/ChatChannelsVC.png")
+          button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatChannelsVC.tga")
           button.Icon:SetVertexColor(voiceActiveColor.r, voiceActiveColor.g, voiceActiveColor.b)
         else
-          button.Icon:SetTexture("Interface/Addons/Chattynator/Assets/ChatChannels.png")
+          button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatChannels.tga")
           button.Icon:SetVertexColor(intensity, intensity, intensity)
         end
         if button:IsMouseOver() then
@@ -117,31 +129,26 @@ local skinners = {
         if not enableHooks then
           return
         end
-        button:SetNormalTexture("Interface/AddOns/Chattynator/Assets/ChatButton.png")
-        button:GetNormalTexture():SetVertexColor(0.15, 0.15, 0.15)
-        button:GetNormalTexture():SetDrawLayer("BACKGROUND")
-        button:SetPushedTexture("Interface/AddOns/Chattynator/Assets/ChatButton.png")
-        button:GetPushedTexture():SetVertexColor(0.05, 0.05, 0.05)
-        button:GetPushedTexture():SetDrawLayer("BACKGROUND")
+        StyleChatButtonTextures(button)
         button.Icon:ClearAllPoints()
         button.Icon:SetPoint("CENTER")
       end)
     elseif tags.menu then
       button.Icon = button:CreateTexture(nil, "ARTWORK")
-      button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/ChatMenu.png")
+      button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatMenu.tga")
       button.Icon:SetVertexColor(intensity, intensity, intensity)
       button.Icon:SetPoint("CENTER")
       button.Icon:SetSize(15, 15)
     else
       button.Icon = button:CreateTexture(nil, "OVERLAY")
       if tags.search then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/Search.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Search.tga")
       elseif tags.copy then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/Copy.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Copy.tga")
       elseif tags.settings then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/SettingsCog.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\SettingsCog.tga")
       elseif tags.scrollToEnd then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/ScrollToBottom.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ScrollToBottom.tga")
       end
       button.Icon:SetPoint("CENTER")
       button.Icon:SetSize(15, 15)
@@ -165,7 +172,7 @@ local skinners = {
         frame.background:SetColorTexture(r, g, b, alpha)
         frame.background:SetVertexColor(1, 1, 1, 1)
       else
-        frame.background:SetTexture("Interface/AddOns/Chattynator/Assets/ChatBackground")
+        frame.background:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatBackground")
         frame.background:SetTexCoord(0, 1, 1, 0)
         frame.background:SetVertexColor(r, g, b, alpha)
       end
@@ -199,25 +206,25 @@ local skinners = {
     tab:SetHeight(22)
     tab:SetAlpha(1)
     tab.Left = tab:CreateTexture(nil, "BACKGROUND")
-    tab.Left:SetTexture("Interface/AddOns/Chattynator/Assets/ChatTabLeft")
+    tab.Left:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatTabLeft")
     tab.Left:SetHeight(22)
     tab.Left:SetWidth(6)
     tab.Left:SetPoint("TOPLEFT")
     tab.Left:SetAlpha(alpha)
     tab.Right = tab:CreateTexture(nil, "BACKGROUND")
-    tab.Right:SetTexture("Interface/AddOns/Chattynator/Assets/ChatTabRight")
+    tab.Right:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatTabRight")
     tab.Right:SetHeight(22)
     tab.Right:SetWidth(6)
     tab.Right:SetPoint("TOPRIGHT")
     tab.Right:SetAlpha(alpha)
     tab.Middle = tab:CreateTexture(nil, "BACKGROUND")
-    tab.Middle:SetTexture("Interface/AddOns/Chattynator/Assets/ChatTabMiddle")
+    tab.Middle:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatTabMiddle")
     tab.Middle:SetHeight(22)
     tab.Middle:SetPoint("LEFT", 6, 0)
     tab.Middle:SetPoint("RIGHT", -6, 0)
     tab.Middle:SetAlpha(alpha)
     tab.LeftFlash = tab:CreateTexture(nil, "BACKGROUND")
-    tab.LeftFlash:SetTexture("Interface/AddOns/Chattynator/Assets/ChatTabLeft")
+    tab.LeftFlash:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatTabLeft")
     tab.LeftFlash:SetHeight(24)
     tab.LeftFlash:SetWidth(8)
     tab.LeftFlash:SetPoint("BOTTOMLEFT", -1, 0)
@@ -225,7 +232,7 @@ local skinners = {
     tab.LeftFlash:SetIgnoreParentAlpha(true)
     tab.LeftFlash:SetVertexColor(flashTabColor.r, flashTabColor.g, flashTabColor.b)
     tab.RightFlash = tab:CreateTexture(nil, "BACKGROUND")
-    tab.RightFlash:SetTexture("Interface/AddOns/Chattynator/Assets/ChatTabRight")
+    tab.RightFlash:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatTabRight")
     tab.RightFlash:SetHeight(24)
     tab.RightFlash:SetWidth(8)
     tab.RightFlash:SetPoint("BOTTOMRIGHT", 1, 0)
@@ -233,7 +240,7 @@ local skinners = {
     tab.RightFlash:SetIgnoreParentAlpha(true)
     tab.RightFlash:SetVertexColor(flashTabColor.r, flashTabColor.g, flashTabColor.b)
     tab.MiddleFlash = tab:CreateTexture(nil, "BACKGROUND")
-    tab.MiddleFlash:SetTexture("Interface/AddOns/Chattynator/Assets/ChatTabMiddle")
+    tab.MiddleFlash:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatTabMiddle")
     tab.MiddleFlash:SetHeight(24)
     tab.MiddleFlash:SetPoint("BOTTOMLEFT", 7, 0)
     tab.MiddleFlash:SetPoint("BOTTOMRIGHT", -7, 0)
@@ -365,7 +372,7 @@ local skinners = {
   ResizeWidget = function(frame, tags)
     local tex = frame:CreateTexture(nil, "ARTWORK")
     tex:SetVertexColor(intensity, intensity, intensity)
-    tex:SetTexture("Interface/AddOns/Chattynator/Assets/resize.png")
+    tex:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\resize.tga")
     tex:SetTexCoord(0, 1, 1, 0)
     tex:SetAllPoints()
     frame:SetScript("OnEnter", function()

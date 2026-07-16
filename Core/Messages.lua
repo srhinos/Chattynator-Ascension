@@ -7,6 +7,10 @@ addonTable.MessagesMonitorMixin ={}
 local conversionThreshold = 5000
 local batchLimit = 10
 
+-- Grey fallback for a class token missing from both color tables (a CoA custom class);
+-- the original CreateColor(color.r,...) nil-indexed. Matches Modifiers/ClassColors.lua.
+local GREY_CLASS_COLOR = { r = 0.62, g = 0.62, b = 0.62 }
+
 local function GetNewLog()
   return { current = {}, historical = {}, version = 1, cleanIndex = 0}
 end
@@ -144,6 +148,10 @@ function addonTable.MessagesMonitorMixin:OnLoad()
     "UPDATE_CHAT_WINDOWS",
     "CHANNEL_UI_UPDATE",
     "CHANNEL_LEFT",
+    -- 3.3.5 MOTD comes from GetGuildRosterMOTD(), not populated at the first
+    -- UPDATE_CHAT_WINDOWS; these re-fire ShowGMOTD once the roster arrives.
+    "GUILD_MOTD",
+    "GUILD_ROSTER_UPDATE",
     "CHAT_MSG_CHANNEL",
     "CHAT_MSG_COMMUNITIES_CHANNEL",
     "CLUB_REMOVED",
@@ -187,8 +195,10 @@ function addonTable.MessagesMonitorMixin:OnLoad()
       ["COMBAT_MISC_INFO"] = true,
     }
   end
+  -- ChatTypeGroup may carry retail-only event names (partial FrameXML backport); an
+  -- unguarded RegisterEvent errors at OnLoad. Gate with IsEventValid like the list above.
   for event, group in pairs(ChatTypeGroupInverted) do
-    if not ignoredGroups[group] then
+    if not ignoredGroups[group] and C_EventUtils.IsEventValid(event) then
       self:RegisterEvent(event)
     end
   end
@@ -373,7 +383,11 @@ function addonTable.MessagesMonitorMixin:SetInset()
   else
     error("unknown format")
   end
-  self.inset = self.sizingFontString:GetUnboundedStringWidth() + 8
+  -- 3.3.5: GetUnboundedStringWidth is retail-only. Fall back to GetStringWidth --
+  -- equivalent here since the sizing FontString has no SetWidth (unbounded == wrapped).
+  local sizing = self.sizingFontString
+  self.inset = (sizing.GetUnboundedStringWidth and sizing:GetUnboundedStringWidth()
+    or sizing:GetStringWidth()) + 8
   if self.timestampFormat == " " then
     self.inset = 6
   end
@@ -381,13 +395,10 @@ function addonTable.MessagesMonitorMixin:SetInset()
 end
 
 function addonTable.MessagesMonitorMixin:ShowGMOTD()
-  local guildID = C_Club.GetGuildClubId()
-  if not guildID then
-    return
-  end
-  local motd = C_Club.GetClubInfo(guildID).broadcast
-  if motd and (not issecretvalue or not issecretvalue(motd)) and motd ~= "" and motd ~= self.seenMOTD then
-    self.seenMOTD = (not issecretvalue or not issecretvalue(motd)) and motd or nil
+  -- 3.3.5: no C_Club communities API; the era guild-MOTD source is GetGuildRosterMOTD().
+  local motd = GetGuildRosterMOTD and GetGuildRosterMOTD()
+  if motd and motd ~= "" and motd ~= self.seenMOTD then
+    self.seenMOTD = motd
     local info = addonTable.Config.Get(addonTable.Config.Options.CHAT_COLORS)["GUILD"] or ChatTypeInfo["GUILD"]
     local formatted = string.format(GUILD_MOTD_TEMPLATE, motd)
     self:SetIncomingType({type = "GUILD", event = "GUILD_MOTD"})
@@ -430,8 +441,8 @@ function addonTable.MessagesMonitorMixin:OnEvent(eventName, ...)
         end
       end
     end
-  elseif eventName == "GUILD_MOTD" then
-    self:ShowGMOTD()
+  elseif eventName == "GUILD_MOTD" or eventName == "GUILD_ROSTER_UPDATE" then
+    self:ShowGMOTD() -- GUILD_ROSTER_UPDATE retries once the roster populates
   elseif eventName == "UI_SCALE_CHANGED" then
     self:SetInset()
     C_Timer.After(0, function()
@@ -487,7 +498,10 @@ function addonTable.MessagesMonitorMixin:OnEvent(eventName, ...)
     self.fontKey = addonTable.Config.Get(addonTable.Config.Options.MESSAGE_FONT)
     self.font = addonTable.Core.GetFontByID(self.fontKey)
     self.scalingFactor = addonTable.Core.GetFontScalingFactor()
-    local name, realm = UnitFullName("player")
+    -- 3.3.5: UnitFullName is absent (realm comes back nil -> concat crash). Use
+    -- UnitName + GetRealmName; this keys message ownership (recordedBy).
+    local name = UnitName("player")
+    local realm = GetRealmName()
     addonTable.Data.CharacterName = name .. "-" .. realm
     for _, data in ipairs(self.awaitingRecorderSet) do
       data[1].recordedBy = addonTable.Data.CharacterName
@@ -506,7 +520,9 @@ function addonTable.MessagesMonitorMixin:OnEvent(eventName, ...)
     local text, playerArg, _, _, _, _, channelID, channelIndex, _, _, lineID, playerGUID = ...
     local channelName = self.channelMap[channelIndex]
     local playerClass, playerRace, playerSex, _
-    if (not issecretvalue or not issecretvalue(playerGUID)) and playerGUID then
+    -- Client passes arg12 = "" (not nil) for no-guid events; GetPlayerInfoByGUID("")
+    -- is a hard C error. Guard the empty string.
+    if (not issecretvalue or not issecretvalue(playerGUID)) and playerGUID and playerGUID ~= "" then
       _, playerClass, _, playerRace, playerSex = GetPlayerInfoByGUID(playerGUID)
     elseif (issecretvalue and issecretvalue(playerArg)) or type(playerArg) ~= "string" or playerArg == "" then
       playerArg = nil
@@ -720,7 +736,9 @@ function addonTable.MessagesMonitorMixin:UpdateChannels()
   self.zoneChannelList = {}
   local channelDetails = {GetChannelList()}
   if #channelDetails > 0 then
-    for i = 1, #channelDetails, 3 do
+    -- 3.3.5: GetChannelList returns 2-tuples (index, name), not retail's 3-stride;
+    -- a stride of 3 dropped every channel after the first from zoneChannelList.
+    for i = 1, #channelDetails, 2 do
       local name = channelDetails[i + 1]
       local _, fullName = GetChannelName(name)
       if fullName then
@@ -751,7 +769,8 @@ function addonTable.MessagesMonitorMixin:UpdateChannels()
 
   for _, channelName in ipairs(self.channelList) do
     local communityIDStr, channelID = channelName:match("^Community:(%d+):(%d+)$")
-    if communityIDStr then
+    -- 3.3.5: 'Community:' channels never occur; guard so the empty C_Club can't nil-call.
+    if communityIDStr and C_Club.GetClubInfo and C_Club.GetStreamInfo then
       local index = GetChannelName(channelName)
       local clubInfo = C_Club.GetClubInfo(communityIDStr)
       local streamInfo = C_Club.GetStreamInfo(communityIDStr, channelID)
@@ -892,24 +911,19 @@ local function GetDecoratedSenderName(event, ...)
     decoratedPlayerName = TimerunningUtil.AddSmallIcon(decoratedPlayerName);
   end
 
-  if senderGUID and ChatTypeInfo[chatType] and GetPlayerInfoByGUID ~= nil then
+  if senderGUID and senderGUID ~= "" and ChatTypeInfo[chatType] and GetPlayerInfoByGUID ~= nil then
+    -- senderGUID is "" (not nil) for no-guid events; GetPlayerInfoByGUID("") C-errors.
+    -- return[2] is the classFile token.
     local _, englishClass, _, _, _, _ = GetPlayerInfoByGUID(senderGUID);
     if englishClass then
-      local classColor
-      if C_ClassColor then
-        classColor = C_ClassColor.GetClassColor(englishClass);
-      else
-        if CUSTOM_CLASS_COLORS then
-          local color = CUSTOM_CLASS_COLORS[englishClass]
-          classColor = CreateColor(color.r, color.g, color.b)
-        else
-          classColor = RAID_CLASS_COLORS[englishClass]
-        end
-      end
-
-      if classColor then
-        decoratedPlayerName = classColor:WrapTextInColorCode(decoratedPlayerName);
-      end
+      -- 3.3.5: class-color tables are plain {r,g,b} with no ColorMixin and CreateColor
+      -- is buggy; wrap with a raw color escape keyed on the token, chaining
+      -- CUSTOM_CLASS_COLORS -> RAID_CLASS_COLORS -> grey.
+      local color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[englishClass])
+        or (RAID_CLASS_COLORS and RAID_CLASS_COLORS[englishClass])
+        or GREY_CLASS_COLOR
+      decoratedPlayerName = ("|cff%02x%02x%02x%s|r"):format(
+        color.r * 255, color.g * 255, color.b * 255, decoratedPlayerName);
     end
   end
 
@@ -977,6 +991,10 @@ local function GetCommunityAndStreamFromChannel(communityChannel)
 end
 
 local function GetCommunityAndStreamName(clubId, streamId)
+  -- 3.3.5: unreachable (needs a community channel); guard so empty C_Club can't nil-call.
+  if not (C_Club.GetStreamInfo and C_Club.GetClubInfo) then
+    return "";
+  end
   local streamInfo = C_Club.GetStreamInfo(clubId, streamId);
 
   if streamInfo and (streamInfo.streamType == Enum.ClubStreamType.Guild or streamInfo.streamType == Enum.ClubStreamType.Officer) then
@@ -1040,11 +1058,12 @@ function GetPFlag(specialFlag, zoneChannelID, localChannelID)
       -- Add Blizzard Icon if  this was sent by a GM/DEV
       return "|TInterface\\ChatFrame\\UI-ChatIcon-Blizz:12:20:0:0:32:16:4:28:0:16|t ";
     elseif specialFlag == "GUIDE" then
-      if ChatFrameUtil.GetMentorChannelStatus(Enum.PlayerMentorshipStatus.Mentor, C_ChatInfo.GetChannelRulesetForChannelID(zoneChannelID)) == Enum.PlayerMentorshipStatus.Mentor then
+      -- 3.3.5: ChatFrameUtil is an empty namespace; guard the retail mentor lookup.
+      if ChatFrameUtil.GetMentorChannelStatus and ChatFrameUtil.GetMentorChannelStatus(Enum.PlayerMentorshipStatus.Mentor, C_ChatInfo.GetChannelRulesetForChannelID(zoneChannelID)) == Enum.PlayerMentorshipStatus.Mentor then
         return NPEV2_CHAT_USER_TAG_GUIDE .. " "; -- possibly unable to save global string with trailing whitespace...
       end
     elseif specialFlag == "NEWCOMER" then
-      if ChatFrameUtil.GetMentorChannelStatus(Enum.PlayerMentorshipStatus.Newcomer, C_ChatInfo.GetChannelRulesetForChannelID(zoneChannelID)) == Enum.PlayerMentorshipStatus.Newcomer then
+      if ChatFrameUtil.GetMentorChannelStatus and ChatFrameUtil.GetMentorChannelStatus(Enum.PlayerMentorshipStatus.Newcomer, C_ChatInfo.GetChannelRulesetForChannelID(zoneChannelID)) == Enum.PlayerMentorshipStatus.Newcomer then
         return NPEV2_CHAT_USER_TAG_NEWCOMER;
       end
     else
@@ -1127,7 +1146,8 @@ function addonTable.MessagesMonitorMixin:MessageEventHandler(event, ...)
 
   local coloredName = GetDecoratedSenderName(event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14);
 
-  local channelLength = strlen(arg4);
+  -- Guard arg4-nil: events with no channel payload may deliver arg4 as literal nil.
+  local channelLength = strlen(arg4 or "");
   local infoType = type;
 
   if type == "VOICE_TEXT" and not GetCVarBool("speechToText") then
@@ -1172,9 +1192,10 @@ function addonTable.MessagesMonitorMixin:MessageEventHandler(event, ...)
     local outMsg = arg1;
     self:AddMessage(outMsg, info.r, info.g, info.b, info.id);
   elseif ( type == "IGNORED" ) then
-    self:AddMessage(string.format(CHAT_IGNORED, arg2), info.r, info.g, info.b, info.id);
+    -- Guard arg2-nil (same under-delivery risk as arg4 above).
+    self:AddMessage(string.format(CHAT_IGNORED, arg2 or ""), info.r, info.g, info.b, info.id);
   elseif ( type == "FILTERED" ) then
-    self:AddMessage(string.format(CHAT_FILTERED, arg2), info.r, info.g, info.b, info.id);
+    self:AddMessage(string.format(CHAT_FILTERED, arg2 or ""), info.r, info.g, info.b, info.id);
   elseif ( type == "RESTRICTED" ) then
     self:AddMessage(CHAT_RESTRICTED_TRIAL, info.r, info.g, info.b, info.id);
   elseif ( type == "CHANNEL_LIST") then
@@ -1240,7 +1261,8 @@ function addonTable.MessagesMonitorMixin:MessageEventHandler(event, ...)
       end
 
       if channelLength > 0 then
-        self:AddMessage(string.format(globalstring, arg8, ResolvePrefixedChannelName(arg4)), info.r, info.g, info.b, info.id, accessID, typeID);
+        -- ResolvePrefixedChannelName(arg4) can be nil -> format %s crash; fall back to raw.
+        self:AddMessage(string.format(globalstring, arg8 or 0, ResolvePrefixedChannelName(arg4) or arg4 or ""), info.r, info.g, info.b, info.id, accessID, typeID);
       end
     end
   elseif ( type == "BN_INLINE_TOAST_ALERT" ) then
@@ -1260,8 +1282,10 @@ function addonTable.MessagesMonitorMixin:MessageEventHandler(event, ...)
     elseif ( arg1 == "FRIEND_REMOVED" or arg1 == "BATTLETAG_FRIEND_REMOVED" ) then
       message = format(globalstring, arg2);
     elseif ( arg1 == "FRIEND_ONLINE" or arg1 == "FRIEND_OFFLINE") then
-      local accountInfo = C_BattleNet.GetAccountInfoByID(arg13);
-      if accountInfo and accountInfo.gameAccountInfo.clientProgram ~= "" then
+      -- 3.3.5: C_BattleNet/C_Texture are unshimmed; guard so this near-inert BN branch
+      -- falls through to the plain playerLink instead of nil-calling.
+      local accountInfo = C_BattleNet and C_BattleNet.GetAccountInfoByID and C_BattleNet.GetAccountInfoByID(arg13);
+      if accountInfo and accountInfo.gameAccountInfo.clientProgram ~= "" and C_Texture and C_Texture.GetTitleIconTexture then
         C_Texture.GetTitleIconTexture(accountInfo.gameAccountInfo.clientProgram, Enum.TitleIconVersion.Small, function(success, texture)
           if success then
             local characterName = BNet_GetValidatedCharacterNameWithClientEmbeddedTexture(accountInfo.gameAccountInfo.characterName, accountInfo.battleTag, texture, 32, 32, 10);

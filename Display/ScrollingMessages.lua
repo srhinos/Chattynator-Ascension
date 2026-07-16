@@ -3,6 +3,71 @@ local addonTable = select(2, ...)
 
 local rightInset = 3
 
+-- 3.3.5: no FontString:SetTextScale. Scale in-place via SetFont. Callers SetFontObject
+-- first, so GetFont() returns the base height and the scale never compounds on reuse.
+local function ApplyTextScale(fontString, scale)
+  local face, height, flags = fontString:GetFont()
+  if face and height then
+    fontString:SetFont(face, height * (scale or 1), flags)
+  end
+end
+
+-- SimpleHTML equivalent of ApplyTextScale. SetFontObject(name) sets family/flags/shadow; there
+-- is no SetTextScale, so scale in-place via SetFont whose first arg is the element ("p"). Read
+-- base metrics from the font object; pcall-guarded so a client that rejects the element form
+-- falls back to the unscaled SetFontObject.
+local function ApplyHTMLFont(html, fontName, scale)
+  html:SetFontObject(fontName)
+  if (scale or 1) ~= 1 then
+    local obj = _G[fontName]
+    if obj and obj.GetFont then
+      local face, height, flags = obj:GetFont()
+      if face and height then
+        pcall(html.SetFont, html, "p", face, height * scale, flags)
+      end
+    end
+  end
+end
+
+-- Per-line hyperlink handlers. 3.3.5 SimpleHTML fires OnHyperlink* as
+-- (self, linkData, linkMarkup, mouseButton, ...); linkData is the body SetHyperlink/SetItemRef
+-- consume. Click routes through SetItemRef with ChattynatorHyperlinkHandler as owner so the
+-- URLs.lua SetItemRef hook still fires. Wired onto each frame once by msgFrameInitializer.
+local function msgOnHyperlinkEnter(self, linkData)
+  -- 3.3.5 GameTooltip:SetHyperlink throws on unsupported link types (player/channel/BNplayer/url),
+  -- and whisper/channel lines carry |Hplayer:...|h -- gate through the fail-soft allowlisted setter.
+  addonTable.SafeSetTooltipHyperlink(GameTooltip, self, "ANCHOR_CURSOR", linkData)
+end
+
+local function msgOnHyperlinkLeave()
+  GameTooltip:Hide()
+end
+
+local function msgOnHyperlinkClick(self, linkData, linkMarkup, mouseButton, downOrArg)
+  local button = ((mouseButton == "LeftButton" or mouseButton == "RightButton") and mouseButton)
+    or ((downOrArg == "LeftButton" or downOrArg == "RightButton") and downOrArg)
+    or (IsShiftKeyDown() and "LeftButton")
+    or "RightButton"
+  if type(linkData) == "string" then
+    SetItemRef(linkData, linkMarkup or linkData, button, ChattynatorHyperlinkHandler or self)
+  end
+end
+
+-- Runs ONCE per newly-created SimpleHTML (arg6 of the Compat frame pool).
+local function msgFrameInitializer(frame)
+  frame:SetScript("OnHyperlinkEnter", msgOnHyperlinkEnter)
+  frame:SetScript("OnHyperlinkLeave", msgOnHyperlinkLeave)
+  frame:SetScript("OnHyperlinkClick", msgOnHyperlinkClick)
+end
+
+-- Pool resetter: must clear anchors like the default resetter, or a pooled frame's stale
+-- SetPoints can re-anchor into a cycle ("dependent on this" crash).
+local function msgFrameResetter(pool, frame)
+  frame:Hide()
+  frame:ClearAllPoints()
+  frame:SetText("")
+end
+
 ---@class DisplayScrollingMessages: Frame
 addonTable.Display.ScrollingMessagesMixin = {}
 
@@ -19,8 +84,19 @@ function addonTable.Display.ScrollingMessagesMixin:MyOnLoad()
   self.accumulatedTime = 0
   self.timestampOffset = GetTime() - time()
 
-  self.pool = CreateFontStringPool(self, "BACKGROUND", 0, addonTable.Messages.font)
-  self.barPool = CreateTexturePool(self, "BACKGROUND")
+  -- 3.3.5: use the namespaced pools; the native pool can drop the resetter and render stale regions.
+  self.pool = Chattynator335_CreateFontStringPool(self, "BACKGROUND", 0, addonTable.Messages.font)
+  self.barPool = Chattynator335_CreateTexturePool(self, "BACKGROUND")
+
+  -- Message lines are SimpleHTML so the client hit-tests item/spell/player links and wraps
+  -- natively (a plain Frame/FontString has no OnHyperlink* before Cataclysm). Timestamps and
+  -- bars stay FontStrings/Textures. 6-arg pool bypass so arg6 (the initializer) runs -- the
+  -- native 4-arg pool drops args 5/6.
+  self.msgPool = Chattynator335_CreateFramePool("SimpleHTML", self, nil, msgFrameResetter, false, msgFrameInitializer)
+
+  -- 3.3.5 does not implicitly enable wheel input when an OnMouseWheel script is set; without
+  -- this the handler below is inert.
+  self:EnableMouseWheel(true)
 
   self:SetScript("OnMouseWheel", function(_, delta)
     self.currentFadeOffsetTime = GetTime()
@@ -85,6 +161,7 @@ function addonTable.Display.ScrollingMessagesMixin:Clear()
   end
   self.visibleLines = {}
   self.pool:ReleaseAll()
+  self.msgPool:ReleaseAll() -- release the SimpleHTML message frames too
   self.barPool:ReleaseAll()
 end
 
@@ -184,7 +261,11 @@ function addonTable.Display.ScrollingMessagesMixin:Render(newMessages)
     self:Clear()
   end
   local tmp = self.pool:Acquire()
-  local lines = math.ceil(self:GetHeight() / tmp:GetLineHeight())
+  -- 3.3.5 SetClipsChildren is a no-op, so overflow lines flow out the top instead of being
+  -- clipped. Divide by the true per-line pitch and floor so we only fetch what fits.
+  local lineHeight = tmp:GetLineHeight()
+  local pitch = lineHeight + (addonTable.Messages.spacing or 0)
+  local lines = math.max(1, math.floor(self:GetHeight() / pitch))
   self.pool:Release(tmp)
 
   local index = 1
@@ -213,22 +294,39 @@ function addonTable.Display.ScrollingMessagesMixin:Render(newMessages)
         self.barPool:Release(fs.bar)
         fs.bar = nil
       end
-      self.pool:Release(fs)
+      self.msgPool:Release(fs) -- message frame is a SimpleHTML now
     end
     for i = start + math.min(#messages, lines) - 1, start, -1 do
       local m = messages[i]
       if m then
-        local fs = self.pool:Acquire()
-        fs:SetFontObject(addonTable.Messages.font)
-        fs:SetTextColor(1, 1, 1)
-        fs:SetJustifyH("LEFT")
+        -- Message line is a SimpleHTML from self.msgPool; ApplyHTMLFont mirrors ApplyTextScale.
+        local fs = self.msgPool:Acquire()
+        -- SimpleHTML wraps at its explicit width, not an anchor-derived one -- anchor LEFT+BOTTOM
+        -- for position and SetWidth to the same inner width the measure uses, so wrap and measured
+        -- height agree.
+        local innerWidth = math.max(1, self:GetWidth() - (addonTable.Messages.inset + 3) - 1)
         fs:SetPoint("LEFT", self, addonTable.Messages.inset + 3, 0)
-        fs:SetPoint("RIGHT", self, -1, 0)
         fs:SetPoint("BOTTOM", self, 0, 2)
+        fs:SetWidth(innerWidth)
         fs:SetText(m.text)
+        -- SimpleHTML applies font/color/justify only if set AFTER SetText.
+        ApplyHTMLFont(fs, addonTable.Messages.font, addonTable.Messages.scalingFactor)
         fs:SetTextColor(m.color.r, m.color.g, m.color.b)
-        fs:SetTextScale(addonTable.Messages.scalingFactor)
-        fs:SetNonSpaceWrap(true)
+        fs:SetJustifyH("LEFT")
+        -- SimpleHTML exposes no GetStringHeight on 3.3.5, but the frame needs an explicit height so
+        -- its TOP edge is defined for the next line's BOTTOM->TOP anchor. Measure the wrapped height
+        -- with a companion FontString at the same font and inner width.
+        local measure = self.pool:Acquire()
+        measure:SetFontObject(addonTable.Messages.font)
+        ApplyTextScale(measure, addonTable.Messages.scalingFactor)
+        measure:SetNonSpaceWrap(true)
+        measure:SetWidth(innerWidth) -- same width as the SimpleHTML so measured height matches the rendered wrap
+        measure:SetText(m.text)
+        local stringHeight = measure:GetStringHeight()
+        self.pool:Release(measure)
+        -- Fall back to one line height if the measure returns nil/0, so a failed measure degrades
+        -- to single-line spacing instead of collapsing to height 0 (which drops the TOP anchor).
+        fs:SetHeight((stringHeight and stringHeight > 0) and stringHeight or lineHeight)
         fs:SetAlpha(1)
         fs.animationTime = nil
         fs.animationStart = nil
@@ -245,7 +343,7 @@ function addonTable.Display.ScrollingMessagesMixin:Render(newMessages)
         timestamp:SetJustifyH("LEFT")
         timestamp:SetPoint("LEFT")
         timestamp:SetPoint("TOP", fs)
-        timestamp:SetTextScale(addonTable.Messages.scalingFactor)
+        ApplyTextScale(timestamp, addonTable.Messages.scalingFactor) -- no SetTextScale on 3.3.5; scale in-place
         timestamp:Show()
         timestamp:SetText(date(addonTable.Messages.timestampFormat, m.timestamp))
         timestamp:SetAlpha(1)
@@ -254,7 +352,7 @@ function addonTable.Display.ScrollingMessagesMixin:Render(newMessages)
         if addonTable.Config.Get(addonTable.Config.Options.SHOW_TIMESTAMP_SEPARATOR) then
           local bar = self.barPool:Acquire()
           bar:Show()
-          bar:SetTexture("Interface/AddOns/Chattynator/Assets/Fade.png")
+          bar:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Fade.tga") -- 3.3.5 loads only TGA/BLP, not PNG
           bar:SetPoint("RIGHT", fs, "LEFT", -4, 0)
           bar:SetPoint("TOP", fs)
           bar:SetPoint("BOTTOM", fs, 0, 1)
@@ -264,6 +362,33 @@ function addonTable.Display.ScrollingMessagesMixin:Render(newMessages)
         end
         table.insert(self.visibleLines, 1, fs)
       end
+    end
+
+    -- Wrapped lines have variable height, so the single-line `lines` count over-fills and spills
+    -- out the top (no SetClipsChildren on 3.3.5). Walk newest->oldest summing actual heights and
+    -- release every oldest line past the budget. Releasing from the oldest end never dangles an
+    -- anchor since older lines anchor down to newer ones. Keep >= 1 line.
+    local budget = self:GetHeight() - 2 -- 2 = the bottom inset the newest line is anchored at
+    local used, keep = 0, #self.visibleLines
+    for idx = 1, #self.visibleLines do
+      local h = self.visibleLines[idx]:GetHeight()
+      if idx > 1 and used + h > budget then
+        keep = idx - 1
+        break
+      end
+      used = used + h + (addonTable.Messages.spacing or 0)
+    end
+    while #self.visibleLines > keep do
+      local old = table.remove(self.visibleLines)
+      if old.timestamp then
+        self.pool:Release(old.timestamp)
+        old.timestamp = nil
+      end
+      if old.bar then
+        self.barPool:Release(old.bar)
+        old.bar = nil
+      end
+      self.msgPool:Release(old)
     end
 
     self:UpdateAlphas()

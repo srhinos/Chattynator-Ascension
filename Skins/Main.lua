@@ -7,6 +7,18 @@ addonTable.Skins.allFrames = {}
 
 local currentSkinner = function() end
 
+-- Skinners run under xpcall; record swallowed errors so /chatty diag can report whether
+-- the skin applied cleanly.
+addonTable.Skins.applyErrors = addonTable.Skins.applyErrors or {}
+local function RecordSkinError(err)
+  local msg = tostring(err)
+  table.insert(addonTable.Skins.applyErrors, msg)
+  if addonTable.diag and addonTable.diag.blocks then
+    addonTable.diag.blocks.skinapply = { ok = false, err = msg }
+  end
+  return CallErrorHandler(err)
+end
+
 function addonTable.Skins.InstallOptions()
   for key, skin in pairs(addonTable.Skins.availableSkins) do
     for _, opt in ipairs(skin.options) do
@@ -41,10 +53,21 @@ function addonTable.Skins.Initialize()
   frame:SetScript("OnEvent", function()
     frame:UnregisterEvent("PLAYER_LOGIN")
     currentSkin.constants()
-    xpcall(currentSkin.initializer, CallErrorHandler)
+    xpcall(currentSkin.initializer, RecordSkinError)
     currentSkinner = currentSkin.skinner
     for _, details in ipairs(addonTable.Skins.allFrames) do
-      xpcall(currentSkinner, CallErrorHandler, details)
+      -- 3.3.5: Lua 5.1 xpcall drops trailing args, so wrap in a closure to forward `details`.
+      xpcall(function() currentSkinner(details) end, RecordSkinError)
+    end
+    -- publish skin-apply status to /chatty diag
+    if addonTable.diag then
+      addonTable.diag.blocks = addonTable.diag.blocks or {}
+      addonTable.diag.order = addonTable.diag.order or {}
+      addonTable.diag.blocks.skinapply = {
+        ok = #addonTable.Skins.applyErrors == 0,
+        err = addonTable.Skins.applyErrors[1],
+      }
+      addonTable.diag.order[#addonTable.diag.order + 1] = "skinapply"
     end
     addonTable.CallbackRegistry:TriggerEvent("SkinLoaded")
   end)
@@ -75,10 +98,11 @@ function addonTable.Skins.AddFrame(regionType, region, tags)
   if not region.added then
     local details = {regionType = regionType, region = region, tags = tags}
     table.insert(addonTable.Skins.allFrames, details)
-    xpcall(currentSkinner, CallErrorHandler, details)
+    -- 3.3.5: xpcall drops trailing args; closure-wrap to forward `details` (see login loop above).
+    xpcall(function() currentSkinner(details) end, RecordSkinError)
     if addonTable.Skins.skinListeners then
       for _, listener in ipairs(addonTable.Skins.skinListeners) do
-        xpcall(listener, CallErrorHandler, details)
+        xpcall(function() listener(details) end, CallErrorHandler)
       end
     end
     region.added = true

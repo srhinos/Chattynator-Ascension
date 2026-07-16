@@ -5,10 +5,13 @@ local addonTable = select(2, ...)
 addonTable.Display.ChatFrameMixin = {}
 
 function addonTable.Display.ChatFrameMixin:OnLoad()
+  -- 3.3.5: SetHyperlinkPropagateToParent is a no-op shim (retail 8.x). Message links are
+  -- handled per-frame in ScrollingMessages instead of bubbling to the parent handler.
   self:SetHyperlinkPropagateToParent(true)
   self:SetMovable(true)
   self:SetResizable(true)
-  self:SetResizeBounds(240, 140)
+  -- 3.3.5: SetResizeBounds (retail 10.0) -> SetMinResize (min only; the call carried no max).
+  self:SetMinResize(240, 140)
   self:SetClampedToScreen(true)
 
   self.editBoxBaseOffset = 6

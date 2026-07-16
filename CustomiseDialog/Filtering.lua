@@ -331,7 +331,9 @@ function addonTable.CustomiseDialog.ToggleTabFilters(windowIndex, tabIndex)
     return
   end
 
-  local frame = CreateFrame("Frame", "ChattynatorCustomiseTabDialog" .. addonTable.Config.Get(addonTable.Config.Options.CURRENT_SKIN), UIParent, "ButtonFrameTemplate")
+  -- 3.3.5: ButtonFrameTemplate -> the Widgets ButtonFrame builder (own backdrop art;
+  -- HidePortrait/HideButtonBar/SetTitle/.Inset stand-ins).
+  local frame = addonTable.Widgets.CreateButtonFrame("ChattynatorCustomiseTabDialog" .. addonTable.Config.Get(addonTable.Config.Options.CURRENT_SKIN), UIParent)
   frame:SetToplevel(true)
   customisers[addonTable.Config.Get(addonTable.Config.Options.CURRENT_SKIN)] = frame
   table.insert(UISpecialFrames, frame:GetName())

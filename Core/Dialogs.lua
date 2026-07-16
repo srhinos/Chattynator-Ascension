@@ -1,6 +1,28 @@
 ---@class addonTableBaganator
 local addonTable = select(2, ...)
 
+-- 3.3.5: classic backdrop replacing the retail NineSlice border. Two stacked textures
+-- (full-frame rim under an inset body); SetColorTexture is retail-only, SetTexture fills.
+local function ApplyClassicBackdrop(frame)
+  local edge = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+  edge:SetAllPoints(frame)
+  edge:SetTexture(0.35, 0.35, 0.35, 1)
+  local body = frame:CreateTexture(nil, "BACKGROUND", nil, -7)
+  body:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
+  body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+  body:SetTexture(0.06, 0.06, 0.06, 0.98)
+end
+
+-- 3.3.5: the self-sizing DynamicResizeButton_Resize global is absent. Local shim that
+-- sizes a UIPanelButtonTemplate from its label width.
+local function DynamicResizeButton_Resize(button, padding)
+  if not button then return end
+  local fs = button.GetFontString and button:GetFontString()
+  local textW = (fs and fs.GetStringWidth and fs:GetStringWidth()) or 0
+  button:SetWidth(math.max(textW + (padding or 40), 80))
+  if button.SetHeight then button:SetHeight(22) end
+end
+
 local counter = 0
 local function GenerateDialog()
   counter = counter + 1
@@ -11,11 +33,11 @@ local function GenerateDialog()
   dialog:EnableMouse(true)
   dialog:SetFrameStrata("DIALOG")
 
-  dialog.NineSlice = CreateFrame("Frame", nil, dialog, "NineSlicePanelTemplate")
-  NineSliceUtil.ApplyLayoutByName(dialog.NineSlice, "Dialog", dialog.NineSlice:GetFrameLayoutTextureKit())
+  -- 3.3.5: NineSlicePanelTemplate/NineSliceUtil are absent; use the classic backdrop.
+  ApplyClassicBackdrop(dialog)
 
   local bg = dialog:CreateTexture(nil, "BACKGROUND", nil, -1)
-  bg:SetColorTexture(0, 0, 0, 0.8)
+  bg:SetTexture(0, 0, 0, 0.8) -- 3.3.5: SetColorTexture is retail-only
   bg:SetPoint("TOPLEFT", 11, -11)
   bg:SetPoint("BOTTOMRIGHT", -11, 11)
 
@@ -47,7 +69,7 @@ function addonTable.Dialogs.ShowCopy(text)
       dialog:Hide()
     end)
 
-    local okButton = CreateFrame("Button", nil, dialog, "UIPanelDynamicResizeButtonTemplate")
+    local okButton = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
     okButton:SetText(DONE)
     DynamicResizeButton_Resize(okButton)
     okButton:SetPoint("TOP", dialog, "CENTER", 0, -18)
@@ -80,8 +102,8 @@ function addonTable.Dialogs.ShowEditBox(text, acceptText, cancelText, confirmCal
     dialog.editBox:SetSize(200, 30)
     dialog.editBox:SetPoint("CENTER")
 
-    dialog.acceptButton = CreateFrame("Button", nil, dialog, "UIPanelDynamicResizeButtonTemplate")
-    dialog.cancelButton = CreateFrame("Button", nil, dialog, "UIPanelDynamicResizeButtonTemplate")
+    dialog.acceptButton = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
+    dialog.cancelButton = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
 
     dialog.acceptButton:SetPoint("TOPRIGHT", dialog, "CENTER", -5, -18)
     dialog.cancelButton:SetPoint("TOPLEFT", dialog, "CENTER", 5, -18)
@@ -120,8 +142,8 @@ function addonTable.Dialogs.ShowConfirm(text, yesText, noText, confirmCallback)
     dialog:SetSize(450, 100)
     dialog.text:SetPoint("TOP", 0, -30)
 
-    dialog.acceptButton = CreateFrame("Button", nil, dialog, "UIPanelDynamicResizeButtonTemplate")
-    dialog.cancelButton = CreateFrame("Button", nil, dialog, "UIPanelDynamicResizeButtonTemplate")
+    dialog.acceptButton = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
+    dialog.cancelButton = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
 
     dialog.acceptButton:SetPoint("TOPRIGHT", dialog, "CENTER", -5, -10)
     dialog.cancelButton:SetPoint("TOPLEFT", dialog, "CENTER", 5, -10)
@@ -155,7 +177,7 @@ function addonTable.Dialogs.ShowAcknowledge(text)
     local dialog = GenerateDialog()
     dialog:SetSize(450, 90)
 
-    local okButton = CreateFrame("Button", nil, dialog, "UIPanelDynamicResizeButtonTemplate")
+    local okButton = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
     okButton:SetText(OKAY)
     DynamicResizeButton_Resize(okButton)
     okButton:SetPoint("TOP", dialog, "CENTER", 0, -8)

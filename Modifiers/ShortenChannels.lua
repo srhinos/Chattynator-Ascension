@@ -133,7 +133,9 @@ local patterns
 
 local function Shorten(data)
   data.text = data.text:gsub(patterns.player.p, patterns.player.r, 1)
-  if data.typeInfo.channel and data.typeInfo.type ~= "CHANNEL" then
+  -- 3.3.5: retail excluded CHANNEL here, relying on the isSecret shorten path in Messages;
+  -- that path is dead (no issecretvalue), so shorten numbered channels here instead.
+  if data.typeInfo.channel then
     data.text = data.text:gsub(patterns.channel.p, patterns.channel.r(data), 1)
   elseif data.typeInfo.type == "GUILD" and data.typeInfo.event == "CHAT_MSG_GUILD" then
     data.text = data.text:gsub(patterns.guild.p, patterns.guild.r, 1)

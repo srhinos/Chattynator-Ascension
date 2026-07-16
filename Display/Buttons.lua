@@ -91,6 +91,10 @@ function addonTable.Display.ButtonsBarMixin:AddBlizzardButtons()
     ChatFrameToggleVoiceDeafenButton:ClearAllPoints()
     ChatFrameToggleVoiceDeafenButton:SetPoint("LEFT", ChatFrameChannelButton, "RIGHT", 2, 0)
     addonTable.Skins.AddFrame("ChatButton", ChatFrameToggleVoiceDeafenButton, {"voiceChatNoAudio"})
+  end
+  -- Guard the Mute button independently: it was nested under the Deafen guard, so Deafen
+  -- present + Mute absent passed nil to Skins.AddFrame and crashed.
+  if ChatFrameToggleVoiceMuteButton then
     addonTable.Skins.AddFrame("ChatButton", ChatFrameToggleVoiceMuteButton, {"voiceChatMuteMic"})
   end
 
@@ -113,7 +117,9 @@ function addonTable.Display.ButtonsBarMixin:AddBlizzardButtons()
   addonTable.Skins.AddFrame("ChatButton", ChatFrameMenuButton, {"menu"})
 end
 
-local searchMarkup = CreateTextureMarkup("Interface/AddOns/Chattynator/Assets/Search.png", 64, 64, 12, 12, 0, 1, 0, 1)
+-- 3.3.5: use the CreateTextureMarkup bypass (the native is signature-divergent and this runs
+-- at module scope, so a bare call would abort the file); .png -> .tga (loads only TGA/BLP).
+local searchMarkup = Chattynator335_CreateTextureMarkup("Interface\\AddOns\\Chattynator\\Assets\\Search.tga", 64, 64, 12, 12, 0, 1, 0, 1)
 local function RunSearch(windowIndex, tabIndex, text, isPattern)
   local window = addonTable.Config.Get(addonTable.Config.Options.WINDOWS)[windowIndex]
   local tab = window.tabs[tabIndex]
@@ -229,6 +235,7 @@ function addonTable.Display.ButtonsBarMixin:OnLeave()
   end
   local function Hide()
     self.hideTimer = C_Timer.NewTimer(2, function()
+      -- Menu.* resolves via the Widgets Menu shim; IsAnyMenuOpen reads DropDownList1 visibility on 3.3.5.
       if Menu.GetManager():IsAnyMenuOpen() and (InCombatLockdown() or tIndexOf(Menu.GetOpenMenuTags(), "MENU_CHAT_SHORTCUTS") ~= nil) then
         Hide()
         return

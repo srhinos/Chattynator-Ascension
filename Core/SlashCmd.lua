@@ -7,6 +7,214 @@ function addonTable.SlashCmd.Initialize()
   SLASH_Chattynator1 = "/chattynator"
   SLASH_Chattynator2 = "/ctnr"
   SLASH_Chattynator3 = "/chatty"
+
+  -- Chat-event probe for /chatty dump: records the last event + its arg12 GUID.
+  -- A separate frame from the seized ChatFrames so it still receives events.
+  local probe = CreateFrame("Frame")
+  for _, e in ipairs({ "CHAT_MSG_WHISPER", "CHAT_MSG_CHANNEL", "CHAT_MSG_AFK", "CHAT_MSG_SAY", "CHAT_MSG_GUILD" }) do
+    if C_EventUtils.IsEventValid(e) then
+      probe:RegisterEvent(e)
+    end
+  end
+  probe:SetScript("OnEvent", function(_, event, ...)
+    addonTable.SlashCmd._lastChat = { event = event, arg12 = select(12, ...), argCount = select("#", ...) }
+  end)
+end
+
+-- /chatty diag|dump render into a self-contained popup, not the chat frame: when the
+-- chat display is the broken subsystem there's nothing to print to, and 3.3.5 has no OS
+-- clipboard. Depends only on CreateFrame + SetBackdrop. Ctrl+C copies; ESC closes.
+local outputWindow
+local function ShowOutputWindow(title, body)
+  local win = outputWindow
+  if not win then
+    win = CreateFrame("Frame", "ChattynatorDiagWindow", UIParent)
+    win:SetSize(560, 440); win:SetPoint("CENTER"); win:SetFrameStrata("DIALOG")
+    win:SetToplevel(true); win:SetClampedToScreen(true); win:SetMovable(true)
+    win:SetBackdrop({
+      bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+      tile = true, tileSize = 16, edgeSize = 16,
+      insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    win:SetBackdropColor(0, 0, 0, 0.92); win:SetBackdropBorderColor(0.5, 0.5, 0.5, 1); win:Hide()
+    if UISpecialFrames then tinsert(UISpecialFrames, win:GetName()) end
+    win.title = CreateFrame("Frame", nil, win)
+    win.title:SetPoint("TOPLEFT", 12, -10); win.title:SetPoint("TOPRIGHT", -32, -10)
+    win.title:SetHeight(20); win.title:EnableMouse(true)
+    win.title:SetScript("OnMouseDown", function() win:StartMoving() end)
+    win.title:SetScript("OnMouseUp", function() win:StopMovingOrSizing() end)
+    win.titleText = win.title:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    win.titleText:SetPoint("LEFT")
+    win.close = CreateFrame("Button", nil, win, "UIPanelCloseButton")
+    win.close:SetPoint("TOPRIGHT", -2, -2); win.close:SetScript("OnClick", function() win:Hide() end)
+    win.scroll = CreateFrame("ScrollFrame", "ChattynatorDiagWindowScroll", win, "UIPanelScrollFrameTemplate")
+    win.scroll:SetPoint("TOPLEFT", win.title, "BOTTOMLEFT", 0, -8)
+    win.scroll:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -30, 12)
+    win.editBox = CreateFrame("EditBox", "ChattynatorDiagWindowEditBox", win.scroll)
+    win.editBox:SetMultiLine(true); win.editBox:SetFontObject(ChatFontNormal)
+    win.editBox:SetAutoFocus(false); win.editBox:SetMaxLetters(0); win.editBox:EnableMouse(true)
+    win.editBox:SetWidth(500); win.editBox:SetScript("OnEscapePressed", function() win:Hide() end)
+    win.scroll:SetScrollChild(win.editBox)
+    win.scroll:SetScript("OnSizeChanged", function(_, w) if w and w > 0 then win.editBox:SetWidth(w) end end)
+    -- 3.3.5: UIPanelScrollFrameTemplate wires the scrollbar buttons but not wheel input;
+    -- a ScrollFrame needs EnableMouseWheel + an OnMouseWheel handler. Clamp to range.
+    win.scroll:EnableMouseWheel(true)
+    win.scroll:SetScript("OnMouseWheel", function(self, delta)
+      local range = self:GetVerticalScrollRange() or 0
+      local new = (self:GetVerticalScroll() or 0) - delta * 24
+      if new < 0 then new = 0 elseif new > range then new = range end
+      self:SetVerticalScroll(new)
+    end)
+    -- The mouse-enabled EditBox scroll-child covers the scroll area and the wheel doesn't
+    -- fall through to the parent, so also drive the scroll from the EditBox's own handler.
+    win.editBox:EnableMouseWheel(true)
+    win.editBox:SetScript("OnMouseWheel", function(_, delta)
+      local range = win.scroll:GetVerticalScrollRange() or 0
+      local new = (win.scroll:GetVerticalScroll() or 0) - delta * 24
+      if new < 0 then new = 0 elseif new > range then new = range end
+      win.scroll:SetVerticalScroll(new)
+    end)
+    outputWindow = win
+  end
+  win.titleText:SetText(tostring(title or "Chattynator"))
+  win:Show(); win.editBox:SetText(tostring(body or "")); win.scroll:SetVerticalScroll(0)
+  win.editBox:HighlightText(); win.editBox:SetFocus()
+end
+
+-- Buffered output: /chatty diag|dump collect lines then flush to the window (color codes
+-- stripped for the plain EditBox). Also mirrored to the chat display in case it IS working.
+local outBuffer
+local function Out(text)
+  if outBuffer then
+    outBuffer[#outBuffer + 1] = (tostring(text):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+  end
+  if addonTable.Messages and addonTable.Utilities and addonTable.Utilities.Message then
+    pcall(addonTable.Utilities.Message, text)
+  end
+end
+local function Flush(title)
+  local body = outBuffer and table.concat(outBuffer, "\n") or ""
+  outBuffer = nil
+  if not pcall(ShowOutputWindow, title, body) then
+    for line in body:gmatch("[^\n]+") do print(line) end -- last-resort if the window itself fails
+  end
+end
+
+-- Per-feature-block pcall ok/FAIL + which globals were shimmed-vs-native + flavor.
+function addonTable.SlashCmd.Diag()
+  outBuffer = {}
+  Out("Chattynator /chatty diag")
+  local C = addonTable.Constants
+  Out(("  flavor: IsClassic=%s IsRetail=%s  build=%s"):format(
+    tostring(C and C.IsClassic), tostring(C and C.IsRetail), tostring(select(4, GetBuildInfo()))))
+
+  local diag = addonTable.diag
+  if diag and diag.order and #diag.order > 0 then
+    Out("  init blocks (fail-soft pcall):")
+    for _, name in ipairs(diag.order) do
+      local b = diag.blocks[name]
+      if b and b.ok then
+        Out(("    |cff40ff40OK  |r %s"):format(name))
+      else
+        Out(("    |cffff4040FAIL|r %s: %s"):format(name, b and tostring(b.err) or "?"))
+      end
+    end
+  else
+    Out("  (no init diagnostics recorded -- Core.Initialize did not run)")
+  end
+
+  local report = addonTable.CompatReport
+  if report then
+    local shimmed, native = {}, {}
+    for k in pairs(report.shims) do shimmed[#shimmed + 1] = k end
+    for k in pairs(report.native) do native[#native + 1] = k end
+    table.sort(shimmed)
+    table.sort(native)
+    Out(("  shimmed (%d): %s"):format(#shimmed, table.concat(shimmed, ", ")))
+    if #native > 0 then
+      Out(("  native/kept (%d): %s"):format(#native, table.concat(native, ", ")))
+    end
+  end
+  Flush("Chattynator  -  /chatty diag")
+end
+
+-- Seized ChatFrame region/child/anchor tree + CHAT_FRAMES contents + arg12 of the
+-- last chat event.
+function addonTable.SlashCmd.Dump()
+  outBuffer = {}
+  Out("Chattynator /chatty dump")
+  Out("  CHAT_FRAMES:")
+  for i, name in pairs(CHAT_FRAMES or {}) do
+    local f = _G[name]
+    local parent = f and f.GetParent and f:GetParent()
+    local pname = parent and ((parent.GetName and parent:GetName()) or tostring(parent)) or "nil"
+    Out(("    [%s] %s parent=%s shown=%s"):format(
+      tostring(i), tostring(name), tostring(pname), tostring(f and f.IsShown and f:IsShown())))
+  end
+
+  local cf = _G.ChatFrame1
+  if cf then
+    local parent = cf.GetParent and cf:GetParent()
+    local pname = parent and ((parent.GetName and parent:GetName()) or "<hidden/anon>") or "nil"
+    Out(("  ChatFrame1: parent=%s shown=%s"):format(tostring(pname), tostring(cf.IsShown and cf:IsShown())))
+    if cf.GetRegions then
+      local regions = { cf:GetRegions() }
+      Out(("    regions: %d"):format(#regions))
+      for _, r in ipairs(regions) do
+        if type(r) == "table" and r.GetObjectType then
+          Out(("      %s%s"):format(tostring(r:GetObjectType()),
+            (r.GetParentKey and r:GetParentKey()) and (" [" .. r:GetParentKey() .. "]") or ""))
+        end
+      end
+    end
+    if cf.GetNumPoints and cf.GetPoint then
+      local n = cf:GetNumPoints() or 0
+      for i = 1, n do
+        local p, rel, rp, x, y = cf:GetPoint(i)
+        local relName = rel and ((rel.GetName and rel:GetName()) or "<anon>") or "nil"
+        Out(("    anchor[%d]: %s -> %s.%s (%s, %s)"):format(
+          i, tostring(p), tostring(relName), tostring(rp), tostring(x), tostring(y)))
+      end
+    end
+  end
+
+  local last = addonTable.SlashCmd._lastChat
+  if last then
+    Out(("  last chat event: %s  args=%s  arg12(GUID)=%s"):format(
+      tostring(last.event), tostring(last.argCount), tostring(last.arg12)))
+  else
+    Out("  last chat event: (none seen yet -- fire a WHISPER/CHANNEL to populate arg12)")
+  end
+
+  -- Message line-layout metrics.
+  pcall(function()
+    local M = addonTable.Messages
+    Out(("  layout: scale=%s spacing=%s inset=%s font=%s"):format(
+      tostring(M and M.scalingFactor), tostring(M and M.spacing),
+      tostring(M and M.inset), tostring(M and M.font)))
+    local fo = M and M.font and _G[M.font]
+    if fo and fo.GetFont then
+      Out(("    font-obj px=%s"):format(tostring(select(2, fo:GetFont()))))
+    end
+    local cf1 = addonTable.allChatFrames and addonTable.allChatFrames[1]
+    local scm = cf1 and cf1.ScrollingMessages
+    if scm then
+      Out(("    scm: height=%s #visibleLines=%s"):format(
+        tostring(scm.GetHeight and scm:GetHeight()), tostring(scm.visibleLines and #scm.visibleLines)))
+      local vl = scm.visibleLines and scm.visibleLines[1]
+      if vl then
+        Out(("    line[1]: GetHeight=%s GetLineHeight=%s fontPx=%s numPoints=%s text=%q"):format(
+          tostring(vl.GetHeight and vl:GetHeight()),
+          tostring(vl.GetLineHeight and vl:GetLineHeight()),
+          tostring(select(2, vl:GetFont())),
+          tostring(vl.GetNumPoints and vl:GetNumPoints()),
+          tostring(vl.GetText and vl:GetText()):sub(1, 24)))
+      end
+    end
+  end)
+
+  Flush("Chattynator  -  /chatty dump")
 end
 
 local INVALID_OPTION_VALUE = "Wrong config value type %s (required %s)"
@@ -75,9 +283,13 @@ local COMMANDS = {
   ["c"] = addonTable.SlashCmd.Config,
   ["config"] = addonTable.SlashCmd.Config,
   ["reset"] = addonTable.SlashCmd.Reset,
+  ["diag"] = addonTable.SlashCmd.Diag,
+  ["dump"] = addonTable.SlashCmd.Dump,
 }
 local HELP = {
   {"", addonTable.Locales.SLASH_HELP},
+  {"diag", "per-block init status + shimmed globals + flavor"},
+  {"dump", "seized chat-frame tree + CHAT_FRAMES + last event arg12"},
 }
 
 function addonTable.SlashCmd.Handler(input)

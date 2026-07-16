@@ -17,7 +17,7 @@ local function SetupGeneral(parent)
     addonTable.Skins.AddFrame("InsetFrame", infoInset)
 
     local logo = infoInset:CreateTexture(nil, "ARTWORK")
-    logo:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Logo.png")
+    logo:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Logo.tga") -- 3.3.5: .png -> .tga (only TGA/BLP load here)
     logo:SetSize(52, 52)
     logo:SetPoint("LEFT", 8, 0)
 
@@ -29,9 +29,11 @@ local function SetupGeneral(parent)
     credit:SetText(addonTable.Locales.BY_PLUSMOUSE)
     credit:SetPoint("BOTTOMLEFT", name, "BOTTOMRIGHT", 5, 0)
 
-    local discordButton = CreateFrame("Button", nil, infoInset, "UIPanelDynamicResizeButtonTemplate")
+    -- 3.3.5: UIPanelDynamicResizeButtonTemplate -> stock UIPanelButtonTemplate + manual SetWidth.
+    local discordButton = CreateFrame("Button", nil, infoInset, "UIPanelButtonTemplate")
     discordButton:SetText(addonTable.Locales.JOIN_THE_DISCORD)
-    DynamicResizeButton_Resize(discordButton)
+    discordButton:SetWidth(discordButton:GetFontString():GetStringWidth() + 40)
+    discordButton:SetHeight(22)
     discordButton:SetPoint("BOTTOMLEFT", logo, "BOTTOMRIGHT", 8, 0)
     discordButton:SetScript("OnClick", function()
       addonTable.Dialogs.ShowCopy("https://discord.gg/gPS62RjKSZ")
@@ -57,9 +59,11 @@ local function SetupGeneral(parent)
     text:SetText(addonTable.Locales.DONATE)
     text:SetJustifyH("RIGHT")
 
-    local button = CreateFrame("Button", nil, donateFrame, "UIPanelDynamicResizeButtonTemplate")
+    -- 3.3.5: UIPanelDynamicResizeButtonTemplate -> UIPanelButtonTemplate + manual SetWidth.
+    local button = CreateFrame("Button", nil, donateFrame, "UIPanelButtonTemplate")
     button:SetText(addonTable.Locales.LINK)
-    DynamicResizeButton_Resize(button)
+    button:SetWidth(button:GetFontString():GetStringWidth() + 40)
+    button:SetHeight(22)
     button:SetPoint("LEFT", donateFrame, "CENTER", -35, 0)
     button:SetScript("OnClick", function()
       addonTable.Dialogs.ShowCopy("https://linktr.ee/plusmouse")
@@ -212,6 +216,9 @@ local function SetupGeneral(parent)
         f:SetValue(addonTable.Config.Get(f.option))
       end
     end
+    -- The profile dropdown has SetValue niled, so the loop skips it and its box text is
+    -- never refreshed at rest. Refresh directly (the rebuilt widget is lazy, unlike retail).
+    profileDropdown.DropDown:GenerateMenu()
   end)
 
   return container
@@ -436,6 +443,8 @@ local function SetupMessages(parent)
       if f.SetValue then
         if f.option then
           f:SetValue(addonTable.Config.Get(f.option))
+        else
+          f:SetValue()
         end
       end
     end
@@ -774,7 +783,9 @@ function addonTable.CustomiseDialog.Toggle()
     return
   end
 
-  local frame = CreateFrame("Frame", "ChattynatorCustomiseDialog" .. addonTable.Config.Get(addonTable.Config.Options.CURRENT_SKIN), UIParent, "ButtonFrameTemplate")
+  -- 3.3.5: ButtonFrameTemplate (Cata 4.0) -> the Widgets ButtonFrame builder (own backdrop
+  -- art; HidePortrait/HideButtonBar/SetTitle/.Inset stand-ins).
+  local frame = addonTable.Widgets.CreateButtonFrame("ChattynatorCustomiseDialog" .. addonTable.Config.Get(addonTable.Config.Options.CURRENT_SKIN), UIParent)
   frame:SetToplevel(true)
   customisers[addonTable.Config.Get(addonTable.Config.Options.CURRENT_SKIN)] = frame
   table.insert(UISpecialFrames, frame:GetName())
@@ -800,6 +811,12 @@ function addonTable.CustomiseDialog.Toggle()
   frame:EnableMouse(true)
   frame:SetScript("OnMouseWheel", function() end)
 
+  -- The dropdown popup is parented to UIParent (to overlay this panel), so it isn't
+  -- auto-hidden with the panel. Close it on every panel-hide path (X, Escape, etc.).
+  frame:HookScript("OnHide", function()
+    addonTable.Widgets.CloseDropdownMenu()
+  end)
+
   frame:SetTitle(addonTable.Locales.CUSTOMISE_CHATTYNATOR)
 
   local containers = {}
@@ -812,7 +829,7 @@ function addonTable.CustomiseDialog.Toggle()
 
     local tabButton = addonTable.CustomiseDialog.Components.GetTab(frame, setup.name)
     if lastTab then
-      tabButton:SetPoint("LEFT", lastTab, "RIGHT", 5, 0)
+      tabButton:SetPoint("LEFT", lastTab, "RIGHT", -10, 0)
     else
       tabButton:SetPoint("TOPLEFT", 0 + addonTable.Constants.ButtonFrameOffset + 5, -25)
     end

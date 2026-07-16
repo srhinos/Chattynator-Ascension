@@ -32,6 +32,8 @@ UIScaleMonitor:SetScript("OnEvent", function()
   end
 end)
 
+-- Active only when ElvUI is the loaded skin. Textures are .tga; retail-only skin methods
+-- (GetUnboundedStringWidth, the Alpha-animation setters) are shimmed in Core/Compat.lua.
 local skinners = {
   Button = function(frame)
     S:HandleButton(frame)
@@ -97,7 +99,7 @@ local skinners = {
 
     if tags.toasts then
       button.Icon = button.FriendsButton or button:CreateTexture(nil, "ARTWORK")
-      button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/ChatSocial.png")
+      button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatSocial.tga")
       button.Icon:SetVertexColor(intensity, intensity, intensity)
       button.Icon:SetDrawLayer("ARTWORK")
       button.Icon:SetSize(12, 12)
@@ -126,10 +128,10 @@ local skinners = {
         button:ClearPushedTexture()
         button:ClearHighlightTexture()
         if state then
-          button.Icon:SetTexture("Interface/Addons/Chattynator/Assets/ChatChannelsVC.png")
+          button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatChannelsVC.tga")
           button.Icon:SetVertexColor(voiceActiveColor.r, voiceActiveColor.g, voiceActiveColor.b)
         else
-          button.Icon:SetTexture("Interface/Addons/Chattynator/Assets/ChatChannels.png")
+          button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatChannels.tga")
           button.Icon:SetVertexColor(intensity, intensity, intensity)
         end
         if button:IsMouseOver() then
@@ -156,20 +158,20 @@ local skinners = {
       end)
     elseif tags.menu then
       button.Icon = button:CreateTexture(nil, "ARTWORK")
-      button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/ChatMenu.png")
+      button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatMenu.tga")
       button.Icon:SetVertexColor(intensity, intensity, intensity)
       button.Icon:SetPoint("CENTER")
       button.Icon:SetSize(15, 15)
     else
       button.Icon = button:CreateTexture(nil, "OVERLAY")
       if tags.search then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/Search.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Search.tga")
       elseif tags.copy then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/Copy.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Copy.tga")
       elseif tags.settings then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/SettingsCog.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\SettingsCog.tga")
       elseif tags.scrollToEnd then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/ScrollToBottom.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ScrollToBottom.tga")
       end
       button.Icon:SetPoint("CENTER")
       button.Icon:SetSize(15, 15)
@@ -304,7 +306,10 @@ local skinners = {
     if E.db.chat.panelBackdrop ~= "HIDEBOTH" then
       frame:CreateBackdrop('Transparent')
       local panelColor = CH.db.panelColor
-      frame.backdrop:SetBackdropColor(panelColor.r, panelColor.g, panelColor.b, panelColor.a)
+      -- Guard the color set: a partial ElvUI backdrop may lack SetBackdropColor.
+      if frame.backdrop and frame.backdrop.SetBackdropColor then
+        frame.backdrop:SetBackdropColor(panelColor.r, panelColor.g, panelColor.b, panelColor.a)
+      end
     end
   end,
   TopTabButton = function(frame)
@@ -320,6 +325,7 @@ local skinners = {
     S:HandleStepSlider(frame)
   end,
   InsetFrame = function(frame)
+    -- frame.NineSlice is retail-only (nil here); 3.3.5 takes the HandleInsetFrame branch.
     if frame.NineSlice then
       frame.NineSlice:SetTemplate("Transparent")
     else
@@ -336,7 +342,7 @@ local skinners = {
   ResizeWidget = function(frame, tags)
     local tex = frame:CreateTexture(nil, "ARTWORK")
     tex:SetVertexColor(intensity, intensity, intensity)
-    tex:SetTexture("Interface/AddOns/Chattynator/Assets/resize.png")
+    tex:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\resize.tga")
     tex:SetTexCoord(0, 1, 1, 0)
     tex:SetAllPoints()
     frame:SetScript("OnEnter", function()

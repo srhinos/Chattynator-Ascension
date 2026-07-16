@@ -19,6 +19,8 @@ local chatTabs = {}
 local chatFrames = {}
 local chatButtons = {}
 
+-- Active only when the Blizzard skin is selected. Textures are .tga; retail-only skin
+-- methods (GetUnboundedStringWidth, the Alpha-animation setters) are shimmed in Core/Compat.lua.
 local skinners = {
   ChatButton = function(button, tags)
     button:SetSize(26, 28)
@@ -47,15 +49,15 @@ local skinners = {
 
       button.Icon = button:CreateTexture(nil, "OVERLAY")
       if tags.search then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/Search.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Search.tga")
       elseif tags.copy then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/Copy.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Copy.tga")
       elseif tags.settings then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/SettingsCog.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\SettingsCog.tga")
       elseif tags.scrollToEnd then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/ScrollToBottom.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ScrollToBottom.tga")
       elseif tags.menu then
-        button.Icon:SetTexture("Interface/AddOns/Chattynator/Assets/ChatMenu.png")
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatMenu.tga")
       end
       button.Icon:SetPoint("CENTER")
       button.Icon:SetSize(12, 12)
@@ -242,13 +244,16 @@ local skinners = {
     end)
   end,
   ResizeWidget = function(frame, tags)
+    -- 3.3.5: SetNormalTexture can leave Get*Texture() nil; guard each SetTexCoord follow-on.
     frame:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-    frame:GetNormalTexture():SetTexCoord(0, 1, 1, 0)
+    local nt = frame:GetNormalTexture()
+    if nt then nt:SetTexCoord(0, 1, 1, 0) end
     frame:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-    frame:GetPushedTexture():SetTexCoord(0, 1, 1, 0)
-    frame:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    local pt = frame:GetPushedTexture()
+    if pt then pt:SetTexCoord(0, 1, 1, 0) end
     frame:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
-    frame:GetHighlightTexture():SetTexCoord(0, 1, 1, 0)
+    local ht = frame:GetHighlightTexture()
+    if ht then ht:SetTexCoord(0, 1, 1, 0) end
   end,
 }
 

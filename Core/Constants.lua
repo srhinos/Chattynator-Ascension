@@ -2,15 +2,19 @@
 local addonTable = select(2, ...)
 
 addonTable.Constants = {
-  IsRetail = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE,
+  -- 3.3.5: the WOW_PROJECT_* globals are all nil, so the retail check nil==nil'd to
+  -- true and routed every retail branch. Hard-code the flavor.
+  IsRetail = false,
   --IsMists = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC,
   --IsCata = WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC,
   --IsWrath = WOW_PROJECT_ID == WOW_PROJECT_WRATH_CLASSIC,
   --IsEra = WOW_PROJECT_ID == WOW_PROJECT_CLASSIC,
-  IsClassic = WOW_PROJECT_ID ~= WOW_PROJECT_MAINLINE,
+  IsClassic = true, -- 3.3.5: was WOW_PROJECT_ID ~= WOW_PROJECT_MAINLINE
 
-  NewTabMarkup = CreateTextureMarkup("Interface/AddOns/Chattynator/Assets/NewTab.png", 40, 40, 15, 15, 0, 1, 0, 1),
-  TabDropdownMarkup = CreateTextureMarkup("Interface/AddOns/Chattynator/Assets/TabDropdown.png", 40, 40, 15, 15, 0, 1, 0, 1),
+  -- 3.3.5: native CreateTextureMarkup is signature-divergent; use the Compat bypass.
+  -- .png -> .tga (client loads only TGA/BLP).
+  NewTabMarkup = Chattynator335_CreateTextureMarkup("Interface\\AddOns\\Chattynator\\Assets\\NewTab.tga", 40, 40, 15, 15, 0, 1, 0, 1),
+  TabDropdownMarkup = Chattynator335_CreateTextureMarkup("Interface\\AddOns\\Chattynator\\Assets\\TabDropdown.tga", 40, 40, 15, 15, 0, 1, 0, 1),
   MinTabWidth = 20,
   TabPadding = 30,
   TabSpacing = 10,
