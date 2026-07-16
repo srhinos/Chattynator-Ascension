@@ -1,3 +1,5 @@
+package-as: Chattynator
+enable-toc-creation: no
 ignore:
   - README.md
   - tmp
@@ -8,4 +10,3 @@ plain-copy:
   - Display
   - CustomiseDialog
   - Skins
-enable-toc-creation: yes
