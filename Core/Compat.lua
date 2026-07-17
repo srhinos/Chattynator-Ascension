@@ -261,6 +261,9 @@ end
 function ColorMixin:WrapTextInColorCode(text)
   return "|c" .. self:GenerateHexColor() .. (text or "") .. "|r"
 end
+-- Ascension's native ColorMixin names the colour-wrap method WrapText (its PaperDollFrame
+-- + Details/ElvUI call color:WrapText); alias it so our forced CreateColor stays drop-in.
+ColorMixin.WrapText = ColorMixin.WrapTextInColorCode
 
 local colorMeta = { __index = ColorMixin }
 local function makeColor(r, g, b, a)
