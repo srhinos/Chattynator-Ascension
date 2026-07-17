@@ -1,6 +1,6 @@
 ## Interface: 30300
 ## Title: Chattynator
-## Version: 1.0.0
+## Version: 1.0.1
 ## Author: plusmouse
 ## SavedVariables: CHATTYNATOR_CONFIG, CHATTYNATOR_MESSAGE_LOG
 ## SavedVariablesPerCharacter: CHATTYNATOR_CURRENT_PROFILE, CHATTYNATOR_COMMAND_HISTORY
