@@ -20,7 +20,9 @@ local chatFrames = {}
 local chatButtons = {}
 
 -- Active only when the Blizzard skin is selected. Textures are .tga; retail-only skin
--- methods (GetUnboundedStringWidth, the Alpha-animation setters) are shimmed in Core/Compat.lua.
+-- methods (GetUnboundedStringWidth) are shimmed in Core/Compat.lua.
+-- 335-port (#1): the Alpha-animation from/to setters are NOT shared-metatable shims any
+-- more (Cell feature-detects them); attached per-instance via Compat335SetupAlphaAnim.
 local skinners = {
   ChatButton = function(button, tags)
     button:SetSize(26, 28)
@@ -232,6 +234,7 @@ local skinners = {
     tab.background.FlashAnimation:SetLooping("BOUNCE")
     local alpha2 = tab.background.FlashAnimation:CreateAnimation("Alpha")
     alpha2:SetChildKey("glow")
+    addonTable.Compat335SetupAlphaAnim(tab.background.FlashAnimation, alpha2) -- 335-port (#1): per-instance era from/to (no shared-metatable fill)
     alpha2:SetFromAlpha(0)
     alpha2:SetToAlpha(1)
     alpha2:SetDuration(0.8)

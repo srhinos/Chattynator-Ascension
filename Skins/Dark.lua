@@ -24,8 +24,11 @@ local editBoxes = {}
 local chatButtons = {}
 
 -- Default skin. Textures are .tga (3.3.5 loads only TGA/BLP); retail-only skin methods
--- (SetIgnoreParentAlpha, SetColorTexture, GetUnboundedStringWidth, the Alpha-animation
--- setters) are shimmed in Core/Compat.lua.
+-- (SetColorTexture, GetUnboundedStringWidth) are shimmed in Core/Compat.lua.
+-- 335-port (#1): SetIgnoreParentAlpha + the Alpha-animation from/to setters are NOT
+-- shared-metatable shims any more (Cell feature-detects them); this file attaches
+-- per-instance implementations via Compat335EnsureIgnoreParentAlpha /
+-- Compat335SetupAlphaAnim at each use.
 
 -- 3.3.5: SetNormalTexture can leave Get*Texture() nil (and needs a backslash path), so
 -- guard the recolor instead of chaining off the getter.
@@ -229,6 +232,7 @@ local skinners = {
     tab.LeftFlash:SetWidth(8)
     tab.LeftFlash:SetPoint("BOTTOMLEFT", -1, 0)
     tab.LeftFlash:Hide()
+    addonTable.Compat335EnsureIgnoreParentAlpha(tab.LeftFlash) -- 335-port (#1): per-instance no-op on our own region (no shared-metatable fill)
     tab.LeftFlash:SetIgnoreParentAlpha(true)
     tab.LeftFlash:SetVertexColor(flashTabColor.r, flashTabColor.g, flashTabColor.b)
     tab.RightFlash = tab:CreateTexture(nil, "BACKGROUND")
@@ -237,6 +241,7 @@ local skinners = {
     tab.RightFlash:SetWidth(8)
     tab.RightFlash:SetPoint("BOTTOMRIGHT", 1, 0)
     tab.RightFlash:Hide()
+    addonTable.Compat335EnsureIgnoreParentAlpha(tab.RightFlash) -- 335-port (#1)
     tab.RightFlash:SetIgnoreParentAlpha(true)
     tab.RightFlash:SetVertexColor(flashTabColor.r, flashTabColor.g, flashTabColor.b)
     tab.MiddleFlash = tab:CreateTexture(nil, "BACKGROUND")
@@ -245,6 +250,7 @@ local skinners = {
     tab.MiddleFlash:SetPoint("BOTTOMLEFT", 7, 0)
     tab.MiddleFlash:SetPoint("BOTTOMRIGHT", -7, 0)
     tab.MiddleFlash:Hide()
+    addonTable.Compat335EnsureIgnoreParentAlpha(tab.MiddleFlash) -- 335-port (#1)
     tab.MiddleFlash:SetIgnoreParentAlpha(true)
     tab.MiddleFlash:SetVertexColor(flashTabColor.r, flashTabColor.g, flashTabColor.b)
     tab:SetNormalFontObject("GameFontNormalSmall")
@@ -337,22 +343,26 @@ local skinners = {
     tab.FlashAnimation:SetLooping("BOUNCE")
     local alpha1 = tab.FlashAnimation:CreateAnimation("Alpha")
     alpha1:SetChildKey("LeftFlash")
+    addonTable.Compat335SetupAlphaAnim(tab.FlashAnimation, alpha1) -- 335-port (#1): per-instance era from/to (no shared-metatable fill)
     alpha1:SetFromAlpha(0)
     alpha1:SetToAlpha(1)
     alpha1:SetDuration(0.5)
     alpha1:SetOrder(1)
     local alpha2 = tab.FlashAnimation:CreateAnimation("Alpha")
     alpha2:SetChildKey("RightFlash")
+    addonTable.Compat335SetupAlphaAnim(tab.FlashAnimation, alpha2) -- 335-port (#1)
     alpha2:SetFromAlpha(0)
     alpha2:SetToAlpha(1)
     alpha2:SetDuration(0.5)
     alpha2:SetOrder(1)
     local alpha3 = tab.FlashAnimation:CreateAnimation("Alpha")
     alpha3:SetChildKey("MiddleFlash")
+    addonTable.Compat335SetupAlphaAnim(tab.FlashAnimation, alpha3) -- 335-port (#1)
     alpha3:SetFromAlpha(0)
     alpha3:SetToAlpha(1)
     alpha3:SetDuration(0.5)
     alpha3:SetOrder(1)
+    addonTable.Compat335EnsureIgnoreParentAlpha(tab) -- 335-port (#1): per-instance no-op on our own tab for the hook below
     hooksecurefunc(tab, "SetFlashing", function(_, state)
       if not enableHooks then
         return

@@ -9,7 +9,7 @@ local function CombatLogInstall(parent)
       delayedRegistrationFrame = CreateFrame("Frame")
       delayedRegistrationFrame:RegisterEvent("UPDATE_CHAT_WINDOWS")
       delayedRegistrationFrame:SetScript("OnEvent", function()
-        C_Timer.After(0, function()
+        addonTable.Timer335.After(0, function() -- 335-port (#4): own scheduler, immune to C_Timer replacement
           CombatLogInstall(parent)
         end)
         delayedRegistrationFrame:UnregisterEvent("UPDATE_CHAT_WINDOWS")

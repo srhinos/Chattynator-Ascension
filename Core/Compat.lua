@@ -710,6 +710,14 @@ do
     end,
   }
   ensureNamespace("C_Timer", ctimerShim)
+  -- 335-port (#4): own-timer independence. Chattynator's OWN timer call sites route
+  -- through addonTable.Timer335 (this same private scheduler: one lazy driver frame,
+  -- After/NewTimer/NewTicker) instead of the global C_Timer, so a rude earlier addon
+  -- replacing C_Timer can neither break our timers nor leak frames under us. NOT a
+  -- global C_Timer write -- the namespace above is still filled only-if-absent.
+  if type(_addonTable) == "table" then
+    _addonTable.Timer335 = ctimerShim
+  end
 end
 
 -- C_StringUtil + pure-Lua StripHyperlinks. Every C_StringUtil site in Messages is
@@ -1378,8 +1386,10 @@ do
     end
   end
 
-  -- SetIgnoreParentAlpha (retail 9.0) -- cosmetic parent-alpha opt-out with no
-  -- 3.3.5 equivalent -> no-op (the shared noop). Reached on Frame and Texture.
+  -- SetIgnoreParentAlpha (retail 9.0): deliberately NOT filled on any shared
+  -- metatable -- Cell (Polyfills.lua:1830/:1842) feature-detects it and a shared
+  -- no-op silently killed its fades. Chattynator's own call sites attach a
+  -- per-instance no-op via Compat335EnsureIgnoreParentAlpha below. -- 335-port (#1)
 
   -- SetColorTexture (Legion 7.0) -- retail-only; the era equivalent is the
   -- SetTexture(r,g,b[,a]) colour overload. Route to it (only-if-absent).
@@ -1457,7 +1467,7 @@ do
     SetClipsChildren = noop,               -- retail 9.0 child-clip method -> no-op
     AdjustPointsOffset = adjustPointsOffset,
     SetShown = setShown,
-    SetIgnoreParentAlpha = noop,           -- cosmetic no-op (retail 9.0)
+    -- 335-port (#1): SetIgnoreParentAlpha intentionally absent here (see comment above).
     ClearHighlightTexture = clearHighlightTexture, -- retail 9.0 -> SetHighlightTexture(nil)
     ClearNormalTexture = clearNormalTexture,   -- retail 9.0.1 -> SetNormalTexture(nil)
     ClearPushedTexture = clearPushedTexture,   -- retail 9.0.1 -> SetPushedTexture(nil)
@@ -1508,9 +1518,9 @@ do
   end
 
   -- Regions (Texture / FontString): SetShown + AdjustPointsOffset; Texture also
-  -- SetColorTexture + SetIgnoreParentAlpha; FontString also SetTextScale +
-  -- GetUnboundedStringWidth + SetIgnoreParentAlpha. Both also GetParentKey +
-  -- SetScale/GetScale; FontString also GetLineHeight.
+  -- SetColorTexture; FontString also SetTextScale + GetUnboundedStringWidth. Both
+  -- also GetParentKey + SetScale/GetScale; FontString also GetLineHeight.
+  -- 335-port (#1): SetIgnoreParentAlpha is NOT filled here (Cell feature-detects it).
   local parent = rawget(_G, "UIParent")
   if type(parent) == "table" then
     if parent.CreateTexture then
@@ -1518,7 +1528,6 @@ do
       ensureWidgetMethod(tex, "SetShown", setShown)
       ensureWidgetMethod(tex, "AdjustPointsOffset", adjustPointsOffset)
       ensureWidgetMethod(tex, "SetColorTexture", setColorTexture)
-      ensureWidgetMethod(tex, "SetIgnoreParentAlpha", noop)
       ensureWidgetMethod(tex, "GetParentKey", getParentKey)
       ensureWidgetMethod(tex, "SetScale", setScale)
       ensureWidgetMethod(tex, "GetScale", getScale)
@@ -1529,7 +1538,6 @@ do
       ensureWidgetMethod(fs, "AdjustPointsOffset", adjustPointsOffset)
       ensureWidgetMethod(fs, "SetTextScale", setTextScale)
       ensureWidgetMethod(fs, "GetUnboundedStringWidth", getUnboundedStringWidth)
-      ensureWidgetMethod(fs, "SetIgnoreParentAlpha", noop)
       ensureWidgetMethod(fs, "GetLineHeight", getLineHeight)
       ensureWidgetMethod(fs, "GetParentKey", getParentKey)
       ensureWidgetMethod(fs, "SetScale", setScale)
@@ -1539,8 +1547,12 @@ do
 
   -- The tab-flash + chat-fade AnimationGroups use retail Alpha setters absent on
   -- 3.3.5 -- SetChildKey, SetFromAlpha/SetToAlpha (7.0.3+; era delta is SetChange)
-  -- on the Animation, SetToFinalAlpha (7.0+) on the group. No-op them so the skinner
-  -- completes; the flash/fade simply does not animate.
+  -- on the Animation, SetToFinalAlpha (7.0+) on the group.
+  -- 335-port (#1): SetFromAlpha/SetToAlpha are NOT filled on the shared Alpha
+  -- metatable any more -- Cell (Polyfills.lua:1830) feature-detects them and a
+  -- shared no-op silently killed its fades. Chattynator's own creation sites route
+  -- through Compat335SetupAlphaAnim below, which attaches REAL per-instance
+  -- implementations (era SetChange delta + starting alpha applied on group play).
   if type(_G.CreateFrame) == "function" then
     local ok, probe = pcall(_G.CreateFrame, "Frame")
     if ok and probe and probe.CreateAnimationGroup then
@@ -1559,12 +1571,102 @@ do
           local anim = grp:CreateAnimation("Alpha")
           if anim then
             ensureWidgetMethod(anim, "SetChildKey", noop)
-            ensureWidgetMethod(anim, "SetFromAlpha", noop)
-            ensureWidgetMethod(anim, "SetToAlpha", noop)
           end
         end
       end
       if probe.Hide then probe:Hide() end
+    end
+  end
+
+  -- 335-port (#1): per-instance replacements for the three methods removed from the
+  -- shared metatables. Instance fields shadow the shared __index for THIS widget
+  -- only, so no other addon's feature detection ever sees them.
+  if type(_addonTable) == "table" then
+    local function noop335() end
+
+    -- Era Alpha-animation from/to. 3.3.5 Alpha animations take SetChange(delta)
+    -- relative to the animated region's base alpha; SetChildKey stays a no-op, so
+    -- the animated region is the group's parent (whole tab/frame pulses or fades --
+    -- an era-visible approximation of the retail child-region animation).
+    local function animSetFromAlpha(anim, from)
+      anim._335FromAlpha = from
+      if anim.SetChange then anim:SetChange((anim._335ToAlpha or 0) - from) end
+    end
+    local function animSetToAlpha(anim, to)
+      anim._335ToAlpha = to
+      if anim.SetChange then anim:SetChange(to - (anim._335FromAlpha or 0)) end
+    end
+
+    -- Attach per-instance from/to setters to one of Chattynator's OWN Alpha
+    -- animations (only-if-absent: a native retail implementation is never
+    -- shadowed) and wire the group so play/stop/finish behave era-correctly:
+    --   OnPlay     -> record the pre-play alpha, apply each anim's from-alpha
+    --   OnStop     -> restore the pre-play alpha (retail Stop() returns to base)
+    --   OnFinished -> persist each anim's to-alpha (Chattynator's only groups that
+    --                 finish naturally are GW2's fades, which SetToFinalAlpha(true))
+    function _addonTable.Compat335SetupAlphaAnim(group, anim)
+      if type(anim) ~= "table" then
+        return anim
+      end
+      if anim.SetFromAlpha == nil then anim.SetFromAlpha = animSetFromAlpha end
+      if anim.SetToAlpha == nil then anim.SetToAlpha = animSetToAlpha end
+      if type(group) ~= "table" then
+        return anim
+      end
+      if group._335AlphaAnims == nil then
+        group._335AlphaAnims = {}
+        local function getTarget()
+          local target = group.GetParent and group:GetParent()
+          if target and target.SetAlpha then
+            return target
+          end
+        end
+        local function applyStart()
+          local target = getTarget()
+          if not target then return end
+          for _, a in ipairs(group._335AlphaAnims) do
+            local from = a._335FromAlpha
+            if from ~= nil then
+              if group._335PrePlayAlpha == nil and target.GetAlpha then
+                group._335PrePlayAlpha = target:GetAlpha()
+              end
+              target:SetAlpha(from)
+            end
+          end
+        end
+        local function restorePrePlay()
+          local target = getTarget()
+          if target and group._335PrePlayAlpha ~= nil then
+            target:SetAlpha(group._335PrePlayAlpha)
+          end
+          group._335PrePlayAlpha = nil
+        end
+        local function applyFinal()
+          local target = getTarget()
+          if target then
+            for _, a in ipairs(group._335AlphaAnims) do
+              if a._335ToAlpha ~= nil then target:SetAlpha(a._335ToAlpha) end
+            end
+          end
+          group._335PrePlayAlpha = nil
+        end
+        if group.HookScript then
+          pcall(group.HookScript, group, "OnPlay", applyStart)
+          pcall(group.HookScript, group, "OnStop", restorePrePlay)
+          pcall(group.HookScript, group, "OnFinished", applyFinal)
+        end
+      end
+      tinsert(group._335AlphaAnims, anim)
+      return anim
+    end
+
+    -- Per-instance SetIgnoreParentAlpha no-op for Chattynator's OWN frames/regions
+    -- (only-if-absent; never touches a shared metatable, never a frame we don't own).
+    function _addonTable.Compat335EnsureIgnoreParentAlpha(widget)
+      if type(widget) == "table" and widget.SetIgnoreParentAlpha == nil then
+        widget.SetIgnoreParentAlpha = noop335
+      end
+      return widget
     end
   end
 end

@@ -33,7 +33,9 @@ UIScaleMonitor:SetScript("OnEvent", function()
 end)
 
 -- Active only when ElvUI is the loaded skin. Textures are .tga; retail-only skin methods
--- (GetUnboundedStringWidth, the Alpha-animation setters) are shimmed in Core/Compat.lua.
+-- (GetUnboundedStringWidth) are shimmed in Core/Compat.lua.
+-- 335-port (#1): the Alpha-animation from/to setters are NOT shared-metatable shims any
+-- more (Cell feature-detects them); attached per-instance via Compat335SetupAlphaAnim.
 local skinners = {
   Button = function(frame)
     S:HandleButton(frame)
@@ -248,6 +250,7 @@ local skinners = {
     tab.FlashAnimation:SetLooping("BOUNCE")
     local alpha2 = tab.FlashAnimation:CreateAnimation("Alpha")
     alpha2:SetChildKey("glow")
+    addonTable.Compat335SetupAlphaAnim(tab.FlashAnimation, alpha2) -- 335-port (#1): per-instance era from/to (no shared-metatable fill)
     alpha2:SetFromAlpha(0)
     alpha2:SetToAlpha(1)
     alpha2:SetDuration(0.8)

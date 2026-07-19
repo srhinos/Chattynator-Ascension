@@ -219,7 +219,14 @@ function addonTable.MessagesMonitorMixin:OnLoad()
   end)
 
   hooksecurefunc(DEFAULT_CHAT_FRAME, "AddMessage", function(_, ...)
-    local fullTrace = debugstack()
+    -- 335-port (#3): bounded stack capture. Upstream built a FULL debugstack() (12
+    -- top + 10 bottom frames of string) on EVERY AddMessage just for source
+    -- attribution. Every name searched below lives in the caller window: the chat
+    -- pipeline (MessageEventHandler / ChatFrame_OnEvent / Blizzard_Channels) is the
+    -- direct/near caller at depth 3-4, and the print path (DevTools_Dump ->
+    -- print -> handler) fits within depth 9 (the addon-attribution slice below
+    -- already reads exactly depth 9). Frames 3..10 cover all of it.
+    local fullTrace = debugstack(3, 8, 0)
     if fullTrace:find("ChatFrame_OnEvent") or fullTrace:find("Blizzard_Channels") or fullTrace:find("MessageEventHandler") then
       return
     end
@@ -240,7 +247,7 @@ function addonTable.MessagesMonitorMixin:OnLoad()
       if trace:find("PrintHandler") ~= nil then
         addonPath = debugstack(9, 1, 0)
       else
-        addonPath = debugstack(3, 1, 0)
+        addonPath = trace -- 335-port (#3): identical slice to `trace` (debugstack(3,1,0)); no third capture
       end
       -- Special case, AceConsole will be shared between addons
       source = addonPath:match("Interface/AddOns/([^/]+)/")
@@ -346,6 +353,7 @@ function addonTable.MessagesMonitorMixin:InvalidateProcessedMessage(id)
       addonTable.CallbackRegistry:TriggerEvent("ResetOneMessageCache", id)
       if self:GetScript("OnUpdate") == nil and self.playerLoginFired then
         self:SetScript("OnUpdate", function()
+          self:SetScript("OnUpdate", nil) -- 335-port (#2): self-clear like the sibling arm sites; without it this Render fires EVERY frame forever
           addonTable.CallbackRegistry:TriggerEvent("Render")
         end)
       end
@@ -445,7 +453,7 @@ function addonTable.MessagesMonitorMixin:OnEvent(eventName, ...)
     self:ShowGMOTD() -- GUILD_ROSTER_UPDATE retries once the roster populates
   elseif eventName == "UI_SCALE_CHANGED" then
     self:SetInset()
-    C_Timer.After(0, function()
+    addonTable.Timer335.After(0, function() -- 335-port (#4): own scheduler, immune to C_Timer replacement
       addonTable.CallbackRegistry:TriggerEvent("MessageDisplayChanged")
       self.pending = 0
       addonTable.CallbackRegistry:TriggerEvent("Render")
@@ -489,6 +497,7 @@ function addonTable.MessagesMonitorMixin:OnEvent(eventName, ...)
 
     if self:GetScript("OnUpdate") == nil then
       self:SetScript("OnUpdate", function()
+        self:SetScript("OnUpdate", nil) -- 335-port (#2): self-clear like the sibling arm sites; without it this Render fires EVERY frame forever
         addonTable.CallbackRegistry:TriggerEvent("Render")
       end)
     end

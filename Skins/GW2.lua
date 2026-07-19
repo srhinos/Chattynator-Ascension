@@ -34,8 +34,8 @@ local toUpdate = {}
 local UIScaleMonitor = CreateFrame("Frame")
 UIScaleMonitor:RegisterEvent("UI_SCALE_CHANGED")
 UIScaleMonitor:SetScript("OnEvent", function()
-  C_Timer.After(0, function()
-    C_Timer.After(0, function()
+  addonTable.Timer335.After(0, function() -- 335-port (#4): own scheduler, immune to C_Timer replacement
+    addonTable.Timer335.After(0, function()
       for _, func in ipairs(toUpdate) do
         func()
       end
@@ -44,8 +44,13 @@ UIScaleMonitor:SetScript("OnEvent", function()
 end)
 
 -- Active only when GW2_UI is loaded. Textures are .tga; retail-only skin methods
--- (GetUnboundedStringWidth, the Alpha-animation setters) are shimmed in Core/Compat.lua;
--- InsetFrame draws its border via Widgets.ApplyBackdrop.
+-- (GetUnboundedStringWidth) are shimmed in Core/Compat.lua; InsetFrame draws its
+-- border via Widgets.ApplyBackdrop.
+-- 335-port (#1): SetIgnoreParentAlpha + the Alpha-animation from/to setters are NOT
+-- shared-metatable shims any more (Cell feature-detects them); this file attaches
+-- per-instance implementations via Compat335EnsureIgnoreParentAlpha /
+-- Compat335SetupAlphaAnim at each use (the fade animates the whole chat frame -- the
+-- era group cannot target the "visuals"/"TabsBar" child keys, see Compat.lua).
 local skinners = {
   Button = function(frame)
     (frame.GwSkinButton or frame.SkinButton)(frame, false, true, false, false, false, false)
@@ -177,6 +182,7 @@ local skinners = {
     tab.FlashAnimation:SetLooping("BOUNCE")
     local alpha2 = tab.FlashAnimation:CreateAnimation("Alpha")
     alpha2:SetChildKey("glow")
+    addonTable.Compat335SetupAlphaAnim(tab.FlashAnimation, alpha2) -- 335-port (#1): per-instance era from/to (no shared-metatable fill)
     alpha2:SetFromAlpha(0)
     alpha2:SetToAlpha(1)
     alpha2:SetDuration(0.8)
@@ -240,16 +246,19 @@ local skinners = {
     local position = addonTable.Config.Get(addonTable.Config.Options.EDIT_BOX_POSITION)
     frame.visuals.fakeEditBoxTex:SetShown(position == "bottom")
 
+    addonTable.Compat335EnsureIgnoreParentAlpha(frame.ScrollingMessagesWrapper) -- 335-port (#1): per-instance no-op on our own frame (no shared-metatable fill)
     frame.ScrollingMessagesWrapper:SetIgnoreParentAlpha(true)
     frame.fadeOutAnimation = frame:CreateAnimationGroup()
     frame.fadeOutAnimation:SetToFinalAlpha(true)
     local alpha1 = frame.fadeOutAnimation:CreateAnimation("Alpha")
+    addonTable.Compat335SetupAlphaAnim(frame.fadeOutAnimation, alpha1) -- 335-port (#1): per-instance era from/to (no shared-metatable fill)
     alpha1:SetFromAlpha(1)
     alpha1:SetToAlpha(0)
     alpha1:SetDuration(0.5)
     alpha1:SetOrder(1)
     alpha1:SetChildKey("visuals")
     local alpha11 = frame.fadeOutAnimation:CreateAnimation("Alpha")
+    addonTable.Compat335SetupAlphaAnim(frame.fadeOutAnimation, alpha11) -- 335-port (#1)
     alpha11:SetFromAlpha(1)
     alpha11:SetToAlpha(0)
     alpha11:SetDuration(0.5)
@@ -258,12 +267,14 @@ local skinners = {
     frame.fadeInAnimation = frame:CreateAnimationGroup()
     frame.fadeInAnimation:SetToFinalAlpha(true)
     local alpha2 = frame.fadeInAnimation:CreateAnimation("Alpha")
+    addonTable.Compat335SetupAlphaAnim(frame.fadeInAnimation, alpha2) -- 335-port (#1)
     alpha2:SetFromAlpha(0)
     alpha2:SetToAlpha(1)
     alpha2:SetDuration(0.5)
     alpha2:SetOrder(1)
     alpha2:SetChildKey("visuals")
     local alpha21 = frame.fadeInAnimation:CreateAnimation("Alpha")
+    addonTable.Compat335SetupAlphaAnim(frame.fadeInAnimation, alpha21) -- 335-port (#1)
     alpha21:SetFromAlpha(0)
     alpha21:SetToAlpha(1)
     alpha21:SetDuration(0.5)
@@ -291,7 +302,12 @@ local skinners = {
       Show()
     end)
     if frame:GetID() == 1 then
-      ChatFrame1EditBox:SetIgnoreParentAlpha(true)
+      -- 335-port (#1): ChatFrame1EditBox is a Blizzard frame we do NOT own; we no
+      -- longer fill the shared metatable and will not attach per-instance methods to
+      -- frames that are not ours, so skip when the client lacks the method (3.3.5).
+      if ChatFrame1EditBox.SetIgnoreParentAlpha then
+        ChatFrame1EditBox:SetIgnoreParentAlpha(true)
+      end
       ChatFrame1EditBox:HookScript("OnShow", function()
         Show()
       end)
