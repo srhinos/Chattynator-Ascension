@@ -167,18 +167,28 @@ function addonTable.Display.ChatFrameMixin:RepositionBlizzardWidgets()
     self:UpdateEditBox()
     addonTable.Skins.AddFrame("ChatEditBox", ChatFrame1EditBox)
 
-    -- Defense-in-depth: the stock edit box is shared, and another addon (or the client) can
-    -- reparent/reanchor it after our one-time setup, leaving it hidden or off-window on some
-    -- builds. Re-assert our parent + anchors every time it is actually shown. UpdateEditBox
-    -- never calls Show, but its SetParent could re-fire OnShow on this client's unreliable
-    -- primitives, so a re-entrancy flag keeps it to a single bounded pass regardless.
-    ChatFrame1EditBox:HookScript("OnShow", function()
-      if self.reanchoringEditBox then
-        return
+    -- The client re-parents this shared stock edit box back onto ChatFrame1 across some zone
+    -- transitions (reported on dungeon queue teleports, and again on leaving). The tab seizure
+    -- leaves ChatFrame1 hidden, so the box lands IsShown()==true / IsVisible()==false: open but
+    -- invisible. Because it is still "shown", ChatEdit_ActivateChat's Show() is a no-op and NO
+    -- OnShow fires -- which is why hooking OnShow never repaired it. Re-assert on the ACTIVATE
+    -- path, which runs on every Enter regardless of shown state, and again after a zone change
+    -- so a persistently-visible box returns without waiting to be typed in.
+    local function ReassertEditBox()
+      local primary = addonTable.allChatFrames and addonTable.allChatFrames[1]
+      if primary and primary:GetID() == 1 and ChatFrame1EditBox:GetParent() ~= UIParent then
+        primary:UpdateEditBox()
       end
-      self.reanchoringEditBox = true
-      self:UpdateEditBox()
-      self.reanchoringEditBox = nil
+    end
+
+    hooksecurefunc("ChatEdit_ActivateChat", ReassertEditBox)
+
+    -- Own registration: Overrides.lua unregisters its PLAYER_ENTERING_WORLD after the first
+    -- fire, and we need every zone. Deferred a frame so we run after the client's own restore.
+    local zoneWatcher = CreateFrame("Frame")
+    zoneWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+    zoneWatcher:SetScript("OnEvent", function()
+      addonTable.Timer335.After(0, ReassertEditBox)
     end)
   end
 end
@@ -213,22 +223,26 @@ function addonTable.Display.ChatFrameMixin:UpdateEditBox()
     return
   end
 
-  -- Some Ascension builds parent ChatFrame1EditBox to ChatFrame1, which the seizure leaves
-  -- hidden -> the box opens but is invisible (IsShown true, IsVisible false), so hitting Enter
-  -- appears to do nothing. Reparent it onto this (visible) window so it shows regardless.
-  ChatFrame1EditBox:SetParent(self)
+  -- Park the box on UIParent rather than on ChatFrame1 (which the seizure hides) or on this
+  -- window. UIParent is the one parent that stays visible no matter what the client does to the
+  -- chat frames across a zone change; position still comes from the anchors below.
+  ChatFrame1EditBox:SetParent(UIParent)
 
   local position = addonTable.Config.Get(addonTable.Config.Options.EDIT_BOX_POSITION)
-  ChatFrame1EditBox:ClearAllPoints()
   ChatFrame1EditBox:SetScale(addonTable.Core.GetFontScalingFactor())
 
   if position == "bottom" then
     local _, _, _, clampBottom = self:GetClampRectInsets()
-    self.ScrollingMessagesWrapper:SetPoint("BOTTOMRIGHT", 0, 6 + ChatFrame1EditBox:GetHeight() * ChatFrame1EditBox:GetScale() - clampBottom)
-    ChatFrame1EditBox:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, ChatFrame1EditBox:GetHeight() - clampBottom * ChatFrame1EditBox:GetScale())
-    ChatFrame1EditBox:SetPoint("TOPRIGHT", self, "BOTTOMRIGHT", 0, ChatFrame1EditBox:GetHeight() - clampBottom * ChatFrame1EditBox:GetScale())
+    local height, scale = ChatFrame1EditBox:GetHeight(), ChatFrame1EditBox:GetScale()
+    self.ScrollingMessagesWrapper:SetPoint("BOTTOMRIGHT", 0, 6 + height * scale - clampBottom)
+    -- ClearAllPoints only once every input above is computed: a throw between the clear and the
+    -- SetPoints would leave the box with zero anchors, i.e. vanished.
+    ChatFrame1EditBox:ClearAllPoints()
+    ChatFrame1EditBox:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, height - clampBottom * scale)
+    ChatFrame1EditBox:SetPoint("TOPRIGHT", self, "BOTTOMRIGHT", 0, height - clampBottom * scale)
   elseif position == "top" then
     self.ScrollingMessagesWrapper:SetPoint("BOTTOMRIGHT", 0, 5)
+    ChatFrame1EditBox:ClearAllPoints()
     ChatFrame1EditBox:SetPoint("TOPLEFT", self, "TOPLEFT", 0, 0)
     ChatFrame1EditBox:SetPoint("TOPRIGHT", self, "TOPRIGHT", 0, 0)
   end
