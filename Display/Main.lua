@@ -199,6 +199,11 @@ function addonTable.Display.ChatFrameMixin:UpdateEditBox()
     return
   end
 
+  -- Some Ascension builds parent ChatFrame1EditBox to ChatFrame1, which the seizure leaves
+  -- hidden -> the box opens but is invisible (IsShown true, IsVisible false), so hitting Enter
+  -- appears to do nothing. Reparent it onto this (visible) window so it shows regardless.
+  ChatFrame1EditBox:SetParent(self)
+
   local position = addonTable.Config.Get(addonTable.Config.Options.EDIT_BOX_POSITION)
   ChatFrame1EditBox:ClearAllPoints()
   ChatFrame1EditBox:SetScale(addonTable.Core.GetFontScalingFactor())

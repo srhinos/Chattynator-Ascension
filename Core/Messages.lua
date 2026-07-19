@@ -1146,8 +1146,14 @@ function addonTable.MessagesMonitorMixin:MessageEventHandler(event, ...)
   end
 
   local shouldDiscardMessage = false;
+  -- Pass a NAMED chat frame to the filters, not our unnamed MessagesMonitor: filters like
+  -- WIM's LibChatHandler do self:GetName():match("^ChatFrame%d+$"), and an unnamed frame's
+  -- GetName() is nil -> "bad argument #1 to 'match'". Tradeoff: a filter that injects a line
+  -- via frame:AddMessage now writes to the seized ChatFrame1 rather than our monitor (the
+  -- AddMessage re-ingest hook bails inside MessageEventHandler), so that injected line is
+  -- dropped; suppress/mutate filters -- WIM included -- are unaffected.
   shouldDiscardMessage, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14
-    = ProcessMessageEventFilters(self, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14);
+    = ProcessMessageEventFilters(DEFAULT_CHAT_FRAME or self, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14);
 
   if shouldDiscardMessage then
     return true;
