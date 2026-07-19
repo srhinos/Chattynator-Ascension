@@ -234,7 +234,7 @@ function addonTable.Display.ButtonsBarMixin:OnLeave()
     self.hideTimer:Cancel()
   end
   local function Hide()
-    self.hideTimer = C_Timer.NewTimer(2, function()
+    self.hideTimer = addonTable.Timer335.NewTimer(2, function() -- 335-port (#4): own scheduler, immune to C_Timer replacement
       -- Menu.* resolves via the Widgets Menu shim; IsAnyMenuOpen reads DropDownList1 visibility on 3.3.5.
       if Menu.GetManager():IsAnyMenuOpen() and (InCombatLockdown() or tIndexOf(Menu.GetOpenMenuTags(), "MENU_CHAT_SHORTCUTS") ~= nil) then
         Hide()

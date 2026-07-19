@@ -73,7 +73,7 @@ function addonTable.Display.CopyChatMixin:OnLoad()
         if text:sub(endPos, endPos):match(pattern) then
           endPos = endPos - 1
         end
-        C_Timer.After(0, function()
+        addonTable.Timer335.After(0, function() -- 335-port (#4): own scheduler, immune to C_Timer replacement
           editBox:HighlightText(startPos, endPos)
         end)
       end
@@ -136,9 +136,9 @@ function addonTable.Display.CopyChatMixin:LoadMessages(filterFunc, indexOffset)
   self.textBox:GetEditBox().fontName = addonTable.Messages.font
   self.textBox:SetText(table.concat(messages, "\n"))
   self.textBox:GetEditBox():HighlightText(0, #self.textBox:GetEditBox():GetText())
-  C_Timer.After(0, function()
+  addonTable.Timer335.After(0, function() -- 335-port (#4): own scheduler, immune to C_Timer replacement
     self.textBox:SetFocus()
-    C_Timer.After(0, function()
+    addonTable.Timer335.After(0, function()
       self.textBox:GetScrollBox():ScrollToEnd()
     end)
   end)

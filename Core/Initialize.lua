@@ -221,7 +221,7 @@ frame:SetScript("OnEvent", function(_, eventName, data)
     -- Wrap API.Initialize so a failure can't abort the rest of ADDON_LOADED.
     runBlock("api", function() addonTable.API.Initialize() end)
   elseif eventName == "PLAYER_LOGIN" then
-    C_Timer.After(1, addonTable.Core.CompatibilityWarnings)
+    addonTable.Timer335.After(1, addonTable.Core.CompatibilityWarnings) -- 335-port (#4): own scheduler, immune to C_Timer replacement
     -- Guard: the chatframes block may have failed, leaving the pool empty.
     if addonTable.allChatFrames[1] then
       addonTable.allChatFrames[1]:UpdateEditBox()

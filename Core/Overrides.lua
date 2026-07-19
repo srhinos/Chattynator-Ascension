@@ -81,7 +81,7 @@ function addonTable.Core.ApplyOverrides()
   frame:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_ENTERING_WORLD" then
       frame:UnregisterEvent("PLAYER_ENTERING_WORLD")
-      C_Timer.After(0, function()
+      addonTable.Timer335.After(0, function() -- 335-port (#4): own scheduler, immune to C_Timer replacement
         for _, tabName in pairs(CHAT_FRAMES) do
           local tab = _G[tabName]
           if tab:GetParent() == UIParent then

@@ -219,7 +219,14 @@ function addonTable.MessagesMonitorMixin:OnLoad()
   end)
 
   hooksecurefunc(DEFAULT_CHAT_FRAME, "AddMessage", function(_, ...)
-    local fullTrace = debugstack()
+    -- 335-port (#3): bounded stack capture. Upstream built a FULL debugstack() (12
+    -- top + 10 bottom frames of string) on EVERY AddMessage just for source
+    -- attribution. Every name searched below lives in the caller window: the chat
+    -- pipeline (MessageEventHandler / ChatFrame_OnEvent / Blizzard_Channels) is the
+    -- direct/near caller at depth 3-4, and the print path (DevTools_Dump ->
+    -- print -> handler) fits within depth 9 (the addon-attribution slice below
+    -- already reads exactly depth 9). Frames 3..10 cover all of it.
+    local fullTrace = debugstack(3, 8, 0)
     if fullTrace:find("ChatFrame_OnEvent") or fullTrace:find("Blizzard_Channels") or fullTrace:find("MessageEventHandler") then
       return
     end
@@ -240,7 +247,7 @@ function addonTable.MessagesMonitorMixin:OnLoad()
       if trace:find("PrintHandler") ~= nil then
         addonPath = debugstack(9, 1, 0)
       else
-        addonPath = debugstack(3, 1, 0)
+        addonPath = trace -- 335-port (#3): identical slice to `trace` (debugstack(3,1,0)); no third capture
       end
       -- Special case, AceConsole will be shared between addons
       source = addonPath:match("Interface/AddOns/([^/]+)/")
@@ -346,6 +353,7 @@ function addonTable.MessagesMonitorMixin:InvalidateProcessedMessage(id)
       addonTable.CallbackRegistry:TriggerEvent("ResetOneMessageCache", id)
       if self:GetScript("OnUpdate") == nil and self.playerLoginFired then
         self:SetScript("OnUpdate", function()
+          self:SetScript("OnUpdate", nil) -- 335-port (#2): self-clear like the sibling arm sites; without it this Render fires EVERY frame forever
           addonTable.CallbackRegistry:TriggerEvent("Render")
         end)
       end
@@ -445,7 +453,7 @@ function addonTable.MessagesMonitorMixin:OnEvent(eventName, ...)
     self:ShowGMOTD() -- GUILD_ROSTER_UPDATE retries once the roster populates
   elseif eventName == "UI_SCALE_CHANGED" then
     self:SetInset()
-    C_Timer.After(0, function()
+    addonTable.Timer335.After(0, function() -- 335-port (#4): own scheduler, immune to C_Timer replacement
       addonTable.CallbackRegistry:TriggerEvent("MessageDisplayChanged")
       self.pending = 0
       addonTable.CallbackRegistry:TriggerEvent("Render")
@@ -489,6 +497,7 @@ function addonTable.MessagesMonitorMixin:OnEvent(eventName, ...)
 
     if self:GetScript("OnUpdate") == nil then
       self:SetScript("OnUpdate", function()
+        self:SetScript("OnUpdate", nil) -- 335-port (#2): self-clear like the sibling arm sites; without it this Render fires EVERY frame forever
         addonTable.CallbackRegistry:TriggerEvent("Render")
       end)
     end
@@ -1137,8 +1146,14 @@ function addonTable.MessagesMonitorMixin:MessageEventHandler(event, ...)
   end
 
   local shouldDiscardMessage = false;
+  -- Pass a NAMED chat frame to the filters, not our unnamed MessagesMonitor: filters like
+  -- WIM's LibChatHandler do self:GetName():match("^ChatFrame%d+$"), and an unnamed frame's
+  -- GetName() is nil -> "bad argument #1 to 'match'". Tradeoff: a filter that injects a line
+  -- via frame:AddMessage now writes to the seized ChatFrame1 rather than our monitor (the
+  -- AddMessage re-ingest hook bails inside MessageEventHandler), so that injected line is
+  -- dropped; suppress/mutate filters -- WIM included -- are unaffected.
   shouldDiscardMessage, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14
-    = ProcessMessageEventFilters(self, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14);
+    = ProcessMessageEventFilters(DEFAULT_CHAT_FRAME or self, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14);
 
   if shouldDiscardMessage then
     return true;

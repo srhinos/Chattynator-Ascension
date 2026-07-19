@@ -538,7 +538,7 @@ function addonTable.Display.TabsBarMixin:OnLeave()
   if self.hideTimer then
     self.hideTimer:Cancel()
   end
-  self.hideTimer = C_Timer.NewTimer(2, function()
+  self.hideTimer = addonTable.Timer335.NewTimer(2, function() -- 335-port (#4): own scheduler, immune to C_Timer replacement
     self.fadeInterpolator:Interpolate(self:GetAlpha(), 0, 0.15, function(value)
       self:SetAlpha(value)
     end)
@@ -569,7 +569,7 @@ addonTable.CallbackRegistry:RegisterCallback("Render", function(_, newMessages)
             tabConfig.whispersTemp[testPlayer] = true
             tabConfig.isTemporary = true
             table.insert(window.tabs, tabConfig)
-            C_Timer.After(0, function()
+            addonTable.Timer335.After(0, function() -- 335-port (#4): own scheduler, immune to C_Timer replacement
               addonTable.CallbackRegistry:TriggerEvent("RefreshStateChange", {[addonTable.Constants.RefreshReason.Tabs] = true})
               addonTable.allChatFrames[targetWindow].TabsBar.Tabs[#window.tabs]:SetFlashing(true)
             end)
@@ -592,7 +592,7 @@ addonTable.CallbackRegistry:RegisterCallback("Render", function(_, newMessages)
             tabConfig.groups = groups
             tabConfig.isTemporary = true
             table.insert(window.tabs, tabConfig)
-            C_Timer.After(0, function()
+            addonTable.Timer335.After(0, function() -- 335-port (#4): own scheduler, immune to C_Timer replacement
               addonTable.CallbackRegistry:TriggerEvent("RefreshStateChange", {[addonTable.Constants.RefreshReason.Tabs] = true})
               addonTable.allChatFrames[targetWindow].TabsBar.Tabs[#window.tabs]:SetFlashing(true)
             end)
