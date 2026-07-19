@@ -12,7 +12,10 @@ local function GetCurrent(editBox)
 	if ( type == "WHISPER" ) then
 		text = text.." "..editBox:GetAttribute("tellTarget");
 	elseif ( type == "CHANNEL" ) then
-		text = "/"..ChatEdit_GetChannelTarget(editBox);
+		-- 3.3.5: ChatEdit_GetChannelTarget is a later-expansion accessor and does not exist.
+		-- Stock reads the attribute directly (FrameXML/ChatFrame.lua:4229, ChatEdit_AddHistory,
+		-- which this function is a fork of).
+		text = "/"..editBox:GetAttribute("channelTarget");
 	end
 
 	local editBoxText = editBox:GetText();
