@@ -166,6 +166,20 @@ function addonTable.Display.ChatFrameMixin:RepositionBlizzardWidgets()
     -- We use the default edit box rather than instantiating our own so that the keyboard shortcuts to open it work
     self:UpdateEditBox()
     addonTable.Skins.AddFrame("ChatEditBox", ChatFrame1EditBox)
+
+    -- Defense-in-depth: the stock edit box is shared, and another addon (or the client) can
+    -- reparent/reanchor it after our one-time setup, leaving it hidden or off-window on some
+    -- builds. Re-assert our parent + anchors every time it is actually shown. UpdateEditBox
+    -- never calls Show, but its SetParent could re-fire OnShow on this client's unreliable
+    -- primitives, so a re-entrancy flag keeps it to a single bounded pass regardless.
+    ChatFrame1EditBox:HookScript("OnShow", function()
+      if self.reanchoringEditBox then
+        return
+      end
+      self.reanchoringEditBox = true
+      self:UpdateEditBox()
+      self.reanchoringEditBox = nil
+    end)
   end
 end
 
