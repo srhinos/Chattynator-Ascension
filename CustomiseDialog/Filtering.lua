@@ -116,7 +116,8 @@ function addonTable.CustomiseDialog.SetupTabFilters(parent)
       dropdown.DropDown:SetupMenu(function(_, rootDescription)
         fields = {}
         local map, count = addonTable.Messages:GetChannels()
-        for index = 1, count do
+        -- 3.3.5/Ascension: index 0 is a real channel here (Newcomers), so start at 0.
+        for index = 0, count do
           if map[index] then
             table.insert(fields, {map[index], map[index]})
           end

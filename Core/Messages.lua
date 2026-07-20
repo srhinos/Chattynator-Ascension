@@ -526,8 +526,11 @@ function addonTable.MessagesMonitorMixin:OnEvent(eventName, ...)
     self.alternativeDefaultLanguage = GetAlternativeDefaultLanguage()
     self:SetInset()
   else
-    local text, playerArg, _, _, _, _, channelID, channelIndex, _, _, lineID, playerGUID = ...
+    local text, playerArg, _, channelString, _, _, channelID, channelIndex, channelBaseName, _, lineID, playerGUID = ...
     local channelName = self.channelMap[channelIndex]
+    if not channelName and channelIndex and eventName == "CHAT_MSG_CHANNEL" then
+      channelName = self:RegisterUnlistedChannel(channelIndex, channelBaseName, channelString, channelID)
+    end
     local playerClass, playerRace, playerSex, _
     -- Client passes arg12 = "" (not nil) for no-guid events; GetPlayerInfoByGUID("")
     -- is a hard C error. Guard the empty string.
@@ -795,6 +798,55 @@ function addonTable.MessagesMonitorMixin:UpdateChannels()
   end
 
   self:ImportChannelColors()
+end
+
+-- 3.3.5/Ascension: the server pushes some channels (Newcomers, index 0) without adding
+-- them to the client's display channel list, so UpdateChannels never sees them and their
+-- messages arrive with channelMap[index] == nil -> typeInfo.channel == nil, which the
+-- inverted tab filter reads as "always show" and the filter dropdown can't offer a
+-- checkbox for. Register them on first sighting so they behave like any other channel.
+function addonTable.MessagesMonitorMixin:RegisterUnlistedChannel(index, baseName, channelString, zoneID)
+  local function usable(value)
+    return not (issecretvalue and issecretvalue(value)) and type(value) == "string" and value ~= ""
+  end
+
+  -- arg9 (base name) is the cleanest source, but Ascension leaves it empty for these
+  -- channels. arg4 is the display string ("0. Newcomers"), so fall back to stripping the
+  -- leading index off that. GetChannelName is last -- it only knows joined channels, and
+  -- an unlisted channel is by definition not one of them.
+  local name
+  if usable(baseName) then
+    name = baseName
+  elseif usable(channelString) then
+    name = channelString:match("^%s*%d+%.%s*(.+)$") or channelString
+    -- Zone channels append " - <zone>"; keep the bare name so moving zones doesn't
+    -- register the channel again under a new key.
+    if zoneID and zoneID ~= 0 then
+      name = name:match("^(.-)%s+%-%s+.+$") or name
+    end
+  else
+    local _, fullName = GetChannelName(index)
+    name = usable(fullName) and fullName or nil
+  end
+  if not name then
+    name = "Channel " .. index
+  end
+
+  self.channelMap[index] = name
+  self.maxDisplayChannels = math.max(self.maxDisplayChannels, index)
+  -- Visible by default (matches the behaviour before this fix); the dropdown can now
+  -- turn it off.
+  self.defaultChannels[name] = true
+
+  -- GetChatColor errors on a group with no colour entry, so make sure one exists.
+  local colors = addonTable.Config.Get(addonTable.Config.Options.CHAT_COLORS)
+  if not colors["CHANNEL_" .. name] then
+    local base = colors["CHANNEL" .. index] or colors.CHANNEL
+    colors["CHANNEL_" .. name] = base and CopyTable(base) or {r = 1, g = 0.75, b = 0.75}
+  end
+  self:ImportChannelColors()
+
+  return name
 end
 
 function addonTable.MessagesMonitorMixin:GetChannels()
