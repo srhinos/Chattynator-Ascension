@@ -6,25 +6,29 @@ local rightInset = 3
 -- 3.3.5: no FontString:SetTextScale. Scale in-place via SetFont. Callers SetFontObject
 -- first, so GetFont() returns the base height and the scale never compounds on reuse.
 local function ApplyTextScale(fontString, scale)
-  local face, height, flags = fontString:GetFont()
+  local fontObj = (addonTable.Messages and addonTable.Messages.font and _G[addonTable.Messages.font]) or _G["ChatFontNormal"]
+  local face, height, flags
+  if fontObj and fontObj.GetFont then
+    face, height, flags = fontObj:GetFont()
+  else
+    face, height, flags = "Fonts\\FRIZQT__.TTF", 14, ""
+  end
   if face and height then
-    fontString:SetFont(face, height * (scale or 1), flags)
+    local targetHeight = height * (scale or 1)
+    if targetHeight < 6 then targetHeight = 6 end
+    fontString:SetFont(face, targetHeight, flags or "")
   end
 end
 
--- SimpleHTML equivalent of ApplyTextScale. SetFontObject(name) sets family/flags/shadow; there
--- is no SetTextScale, so scale in-place via SetFont whose first arg is the element ("p"). Read
--- base metrics from the font object; pcall-guarded so a client that rejects the element form
--- falls back to the unscaled SetFontObject.
 local function ApplyHTMLFont(html, fontName, scale)
   html:SetFontObject(fontName)
-  if (scale or 1) ~= 1 then
-    local obj = _G[fontName]
-    if obj and obj.GetFont then
-      local face, height, flags = obj:GetFont()
-      if face and height then
-        pcall(html.SetFont, html, "p", face, height * scale, flags)
-      end
+  local fontObj = _G[fontName] or _G["ChatFontNormal"]
+  if fontObj and fontObj.GetFont then
+    local face, height, flags = fontObj:GetFont()
+    if face and height then
+      local targetHeight = height * (scale or 1)
+      if targetHeight < 6 then targetHeight = 6 end
+      pcall(html.SetFont, html, "p", face, targetHeight, flags or "")
     end
   end
 end

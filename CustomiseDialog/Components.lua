@@ -106,19 +106,19 @@ function addonTable.CustomiseDialog.Components.GetBasicDropdown(parent, labelTex
   -- The popup is rendered by the Widgets compat menu; the native dropdown list is unused.
   local ddName = uniqueName("Dropdown")
   local dropdown = CreateFrame("Frame", ddName, frame, "UIDropDownMenuTemplate")
-  dropdown:SetWidth(250)
-  dropdown:SetPoint("LEFT", frame, "CENTER", -32, 0)
+  dropdown:SetWidth(200)
+  dropdown:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
   if UIDropDownMenu_SetWidth then
-    UIDropDownMenu_SetWidth(dropdown, 250)
+    UIDropDownMenu_SetWidth(dropdown, 200)
   end
   if UIDropDownMenu_JustifyText then
     UIDropDownMenu_JustifyText(dropdown, "LEFT")
   end
 
   local label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  label:SetPoint("LEFT", 20, 0)
-  label:SetPoint("RIGHT", frame, "CENTER", -50, 0)
-  label:SetJustifyH("RIGHT")
+  label:SetPoint("LEFT", frame, "LEFT", 10, 0)
+  label:SetPoint("RIGHT", dropdown, "LEFT", -10, 0)
+  label:SetJustifyH("LEFT")
   label:SetText(labelText)
   frame:SetPoint("LEFT", 30, 0)
   frame:SetPoint("RIGHT", -30, 0)
@@ -164,6 +164,19 @@ function addonTable.CustomiseDialog.Components.GetBasicDropdown(parent, labelTex
     end
     if UIDropDownMenu_SetText then
       UIDropDownMenu_SetText(dropdown, shown)
+    end
+    local ddText = _G[ddName .. "Text"]
+    local ddBtn = _G[ddName .. "Button"]
+    if ddText then
+      ddText:ClearAllPoints()
+      if ddBtn then
+        ddText:SetPoint("LEFT", dropdown, "LEFT", 25, 0)
+        ddText:SetPoint("RIGHT", ddBtn, "LEFT", -4, 0)
+      else
+        ddText:SetPoint("LEFT", dropdown, "LEFT", 25, 0)
+        ddText:SetPoint("RIGHT", dropdown, "RIGHT", -25, 0)
+      end
+      ddText:SetJustifyH("LEFT")
     end
   end
 
@@ -268,6 +281,7 @@ function addonTable.CustomiseDialog.Components.GetSlider(parent, label, min, max
   holder.Slider:SetHeight(20)
   holder.Slider:SetMinMaxValues(min, max)
   holder.Slider:SetValueStep(1)
+  local isInitializing = true
   holder.Slider:SetValue(min)
 
   -- The auto-created label FontStrings: Low/High blank, Text = the value readout.
@@ -286,15 +300,22 @@ function addonTable.CustomiseDialog.Components.GetSlider(parent, label, min, max
 
   holder.Slider:SetScript("OnValueChanged", function(_, value)
     updateText(value)
-    callback(value)
+    if not isInitializing then
+      callback(value)
+    end
   end)
+
+  isInitializing = false
 
   function holder:GetValue()
     return holder.Slider:GetValue()
   end
 
   function holder:SetValue(value)
-    return holder.Slider:SetValue(value)
+    isInitializing = true
+    holder.Slider:SetValue(value)
+    updateText(value)
+    isInitializing = false
   end
 
   addonTable.Skins.AddFrame("Slider", holder.Slider)

@@ -822,12 +822,13 @@ function addonTable.CustomiseDialog.Toggle()
   local containers = {}
   local lastTab
   local Tabs = {}
-  for _, setup in ipairs(TabSetups) do
+  for i, setup in ipairs(TabSetups) do
     local tabContainer = setup.callback(frame)
     tabContainer:SetPoint("TOPLEFT", 0 + addonTable.Constants.ButtonFrameOffset, -65)
     tabContainer:SetPoint("BOTTOMRIGHT")
 
     local tabButton = addonTable.CustomiseDialog.Components.GetTab(frame, setup.name)
+    _G[frame:GetName() .. "Tab" .. i] = tabButton
     if lastTab then
       tabButton:SetPoint("LEFT", lastTab, "RIGHT", -10, 0)
     else
