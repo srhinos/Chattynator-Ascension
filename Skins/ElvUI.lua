@@ -93,6 +93,32 @@ local skinners = {
     button:ClearPushedTexture()
     button:ClearHighlightTexture()
 
+    if not button.Icon then
+      button.Icon = button:CreateTexture(nil, "OVERLAY")
+      local hasTag = function(target)
+        if not tags then return false end
+        if tags[target] then return true end
+        for _, v in ipairs(tags) do
+          if v == target then return true end
+        end
+        return false
+      end
+
+      if hasTag("search") then
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Search.tga")
+      elseif hasTag("copy") then
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Copy.tga")
+      elseif hasTag("settings") then
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\SettingsCog.tga")
+      elseif hasTag("scrollToEnd") then
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ScrollToBottom.tga")
+      elseif hasTag("menu") then
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatMenu.tga")
+      end
+      button.Icon:SetPoint("CENTER")
+      button.Icon:SetSize(16, 16)
+    end
+
     button:HookScript("OnEnter", function()
       if not enableHooks then
         return

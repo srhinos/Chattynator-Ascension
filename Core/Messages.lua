@@ -377,7 +377,15 @@ end
 
 function addonTable.MessagesMonitorMixin:SetInset()
   self.sizingFontString:SetFontObject(self.font)
-  self.sizingFontString:SetTextScale(self.scalingFactor)
+  local fontObj = _G[self.font] or _G["ChatFontNormal"]
+  if fontObj and fontObj.GetFont then
+    local face, height, flags = fontObj:GetFont()
+    if face and height then
+      local targetHeight = height * (self.scalingFactor or 1)
+      if targetHeight < 6 then targetHeight = 6 end
+      self.sizingFontString:SetFont(face, targetHeight, flags or "")
+    end
+  end
   if self.timestampFormat == "%X" then
     self.sizingFontString:SetText("00:00:00")
   elseif self.timestampFormat == "%H:%M" then
@@ -391,11 +399,10 @@ function addonTable.MessagesMonitorMixin:SetInset()
   else
     error("unknown format")
   end
-  -- 3.3.5: GetUnboundedStringWidth is retail-only. Fall back to GetStringWidth --
-  -- equivalent here since the sizing FontString has no SetWidth (unbounded == wrapped).
+
   local sizing = self.sizingFontString
   self.inset = (sizing.GetUnboundedStringWidth and sizing:GetUnboundedStringWidth()
-    or sizing:GetStringWidth()) + 8
+    or sizing:GetStringWidth()) + 14
   if self.timestampFormat == " " then
     self.inset = 6
   end
@@ -1136,6 +1143,12 @@ function addonTable.MessagesMonitorMixin:MessageEventHandler(event, ...)
   local isSecret = issecretvalue and issecretvalue(arg1)
   local playerWrapper = isSecret and addonTable.Modifiers.PlayerWrapper or "[%s]"
 
+  local checkText = tostring(arg1 or ""):lower()
+  local checkChan = tostring(arg4 or arg8 or arg9 or ""):lower()
+  if checkText:find("channel:%s*%[%s*pol%s*%]") or checkChan == "pol" or checkChan == "[pol]" or checkChan:find("^pol$") or checkChan:find("%[pol%]") then
+    return true
+  end
+
   local type = strsub(event, 10);
   local chatTypeInfo = addonTable.Config.Get(addonTable.Config.Options.CHAT_COLORS)
   local info = chatTypeInfo[type];
@@ -1477,12 +1490,16 @@ function addonTable.MessagesMonitorMixin:MessageEventHandler(event, ...)
   -- Sounds and tell targets handled by Blizzard code
 
   if ChatFrame_AddMessageEventFilter then
-    ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL_NOTICE", function(_, _, action, _, _, _, _, _, _, _, channelName)
+    local function PolFilter(_, _, msg, _, _, _, _, _, _, _, channelName)
+      local txt = tostring(msg or ""):lower()
       local name = tostring(channelName or ""):lower()
-      if name == "pol" or name == "[pol]" or name:find("^pol$") or name:find("%[pol%]") then
+      if txt:find("channel:%s*%[%s*pol%s*%]") or name == "pol" or name == "[pol]" or name:find("^pol$") or name:find("%[pol%]") then
         return true
       end
-    end)
+    end
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", PolFilter)
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL_NOTICE", PolFilter)
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL", PolFilter)
   end
 
   return true;

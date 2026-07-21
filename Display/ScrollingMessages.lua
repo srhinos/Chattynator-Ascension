@@ -357,7 +357,7 @@ function addonTable.Display.ScrollingMessagesMixin:Render(newMessages)
           local bar = self.barPool:Acquire()
           bar:Show()
           bar:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Fade.tga") -- 3.3.5 loads only TGA/BLP, not PNG
-          bar:SetPoint("RIGHT", fs, "LEFT", -4, 0)
+          bar:SetPoint("RIGHT", fs, "LEFT", -6, 0)
           bar:SetPoint("TOP", fs)
           bar:SetPoint("BOTTOM", fs, 0, 1)
           bar:SetWidth(2)
