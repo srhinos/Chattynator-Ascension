@@ -1246,6 +1246,10 @@ function addonTable.MessagesMonitorMixin:MessageEventHandler(event, ...)
       self:AddMessage(CHAT_MSG_BLOCK_CHAT_CHANNEL_INVITE, info.r, info.g, info.b, info.id);
     end
   elseif (type == "CHANNEL_NOTICE") then
+    local chName = tostring(arg9 or arg8 or arg4 or ""):lower()
+    if chName == "pol" or chName == "[pol]" or chName:find("^pol$") or chName:find("%[pol%]") then
+      return
+    end
     if isSecret or not tIndexOf(self.zoneChannelList, arg7) then
       return
     end
@@ -1471,6 +1475,15 @@ function addonTable.MessagesMonitorMixin:MessageEventHandler(event, ...)
   end
 
   -- Sounds and tell targets handled by Blizzard code
+
+  if ChatFrame_AddMessageEventFilter then
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL_NOTICE", function(_, _, action, _, _, _, _, _, _, _, channelName)
+      local name = tostring(channelName or ""):lower()
+      if name == "pol" or name == "[pol]" or name:find("^pol$") or name:find("%[pol%]") then
+        return true
+      end
+    end)
+  end
 
   return true;
 end
