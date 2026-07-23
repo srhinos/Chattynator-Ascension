@@ -8,6 +8,64 @@ function addonTable.SlashCmd.Initialize()
   SLASH_Chattynator2 = "/ctnr"
   SLASH_Chattynator3 = "/chatty"
 
+  -- Retail-style /i: 3.3.5 has no INSTANCE_CHAT, so route to the current group channel by context.
+  local function ResolveInstanceChannel()
+    local _, instanceType = IsInInstance()
+    if instanceType == "pvp" then
+      return "BATTLEGROUND"
+    elseif (IsInRaid and IsInRaid()) or (GetNumRaidMembers and GetNumRaidMembers() > 0) then
+      return "RAID"
+    elseif (GetNumPartyMembers and GetNumPartyMembers() > 0) or (IsInGroup and IsInGroup()) then
+      return "PARTY"
+    end
+  end
+
+  -- Primary path: the retail chat-type-switch feel. Typing "/i " (or /inst, /instance) followed
+  -- by a space swaps the edit box's chat type to the resolved channel and drops the prefix,
+  -- exactly like the stock /p /raid /bg. A SlashCmdList command can't do this because it only
+  -- fires on Enter -- OnTextChanged fires on the space, and we own this edit box.
+  ChatFrame1EditBox:HookScript("OnTextChanged", function(editBox, userInput)
+    if not userInput then
+      return -- our own SetText below re-fires this with userInput=false; ignore it
+    end
+    local token, rest = editBox:GetText():match("^(/%S+)%s(.*)$")
+    if not token then
+      return
+    end
+    token = token:lower()
+    if token == "/i" or token == "/inst" or token == "/instance" then
+      local channel = ResolveInstanceChannel()
+      if channel then
+        editBox:SetAttribute("chatType", channel)
+        ChatEdit_UpdateHeader(editBox)
+        rest = rest or ""
+        editBox:SetText(rest)
+        editBox:SetCursorPosition(#rest)
+      end
+    end
+  end)
+
+  -- Fallback: bare "/i" + Enter (no trailing space, so the hook above never fired).
+  SlashCmdList["ChattynatorInstance"] = function(msg)
+    local channel = ResolveInstanceChannel()
+    if not channel then
+      return -- not grouped; nothing to route to (mirrors retail's no-op)
+    end
+    if msg and msg:match("%S") then
+      SendChatMessage(msg, channel)
+    else
+      addonTable.Timer335.After(0, function()
+        local editBox = (ChatEdit_ChooseBoxForSend and ChatEdit_ChooseBoxForSend()) or ChatFrame1EditBox
+        ChatEdit_ActivateChat(editBox)
+        editBox:SetAttribute("chatType", channel)
+        ChatEdit_UpdateHeader(editBox)
+      end)
+    end
+  end
+  SLASH_ChattynatorInstance1 = "/i"
+  SLASH_ChattynatorInstance2 = "/inst"
+  SLASH_ChattynatorInstance3 = "/instance"
+
   -- Chat-event probe for /chatty dump: records the last event + its arg12 GUID.
   -- A separate frame from the seized ChatFrames so it still receives events.
   local probe = CreateFrame("Frame")
