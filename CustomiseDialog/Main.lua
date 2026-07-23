@@ -634,7 +634,9 @@ local function SetupChatColors(parent)
       dropdown.DropDown:SetupMenu(function(_, rootDescription)
         local colors = addonTable.Config.Get(addonTable.Config.Options.CHAT_COLORS)
         local channelMap, count = addonTable.Messages:GetChannels()
-        for i = 1, count do
+        -- 3.3.5/Ascension: index 0 is a real channel (Newcomers), so start at 0 to match the
+        -- filter dropdown -- otherwise a channel-0 entry is filterable but never recolourable.
+        for i = 0, count do
           if channelMap[i] then
             local color = colors["CHANNEL_" .. channelMap[i]]
             local oldColor = CopyTable(color)

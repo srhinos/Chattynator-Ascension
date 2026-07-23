@@ -20,13 +20,25 @@ local toUpdate = {}
 
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eventFrame:SetScript("OnEvent", function()
-  eventFrame:UnregisterEvent("PLAYER_ENTERING_WORLD")
-  C_Timer.After(0.1, function()
-    enableHooks = true
-  end)
-  for _, func in ipairs(toUpdate) do
-    func()
+eventFrame:RegisterEvent("UI_SCALE_CHANGED")
+eventFrame:SetScript("OnEvent", function(_, event)
+  if event == "PLAYER_ENTERING_WORLD" then
+    eventFrame:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    -- Defer one tick so ElvUI's API is ready, THEN run the queue. The queue must run after
+    -- enableHooks flips, or every styling hook early-returns and tabs stay unstyled until the
+    -- first click.
+    C_Timer.After(0.1, function()
+      enableHooks = true
+      for _, func in ipairs(toUpdate) do
+        func()
+      end
+    end)
+  elseif enableHooks then
+    -- UI_SCALE_CHANGED: re-run so tab widths recompute (restores the monitor the one-shot
+    -- PLAYER_ENTERING_WORLD frame replaced).
+    for _, func in ipairs(toUpdate) do
+      func()
+    end
   end
 end)
 
@@ -136,6 +148,26 @@ local skinners = {
         button.Icon:SetVertexColor(intensity, intensity, intensity)
       end
     end)
+
+    -- Press-nudge on the buttons that actually exist here (menu/search/copy/settings/scroll);
+    -- the rewrite dropped it. Guard button.Icon since it's nil for buttons we don't skin.
+    button:HookScript("OnMouseDown", function()
+      if not enableHooks then
+        return
+      end
+      if button.Icon then
+        button.Icon:AdjustPointsOffset(2, -2)
+      end
+    end)
+    button:HookScript("OnMouseUp", function()
+      if not enableHooks then
+        return
+      end
+      if button.Icon then
+        button.Icon:AdjustPointsOffset(-2, 2)
+      end
+    end)
+
     if button.Icon then
       button.Icon:SetVertexColor(intensity, intensity, intensity)
     end
