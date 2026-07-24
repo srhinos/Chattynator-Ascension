@@ -75,10 +75,19 @@ end
 
 local function GetMembers(overrideFile, outline)
   local members = {}
-  local coreFont = _G[fonts["default"]]
+  local coreFont = _G[fonts["default"]] or ChatFontNormal
+  local defaultFile, defaultSize = "Fonts\\FRIZQT__.TTF", 14
+  if coreFont and coreFont.GetFont then
+    defaultFile, defaultSize = coreFont:GetFont()
+  end
   for _, a in ipairs(alphabet) do
-    local forAlphabet = coreFont:GetFontObjectForAlphabet(a)
-    local file, size, _ = forAlphabet:GetFont()
+    local file, size = defaultFile, defaultSize
+    if coreFont and coreFont.GetFontObjectForAlphabet then
+      local forAlphabet = coreFont:GetFontObjectForAlphabet(a)
+      if forAlphabet and forAlphabet.GetFont then
+        file, size = forAlphabet:GetFont()
+      end
+    end
     if a == overrideAlphabet and overrideFile then
       table.insert(members, {
         alphabet = a,
@@ -122,18 +131,27 @@ function addonTable.Core.CreateFont(lsmPath, outline, shadow, force)
     end
 
     local font = CreateFontFamily(globalName, GetMembers(path, outline))
-    font:SetTextColor(1, 1, 1)
+    if font and font.SetTextColor then
+      font:SetTextColor(1, 1, 1)
+    end
   end
 
   fonts[key] = globalName
 
   local fontFamily = _G[globalName]
 
-  if shadow == "SHADOW" then
-    for _, a in ipairs(alphabet) do
-      local font = fontFamily:GetFontObjectForAlphabet(a)
-      font:SetShadowOffset(1, -1)
-      font:SetShadowColor(0, 0, 0, 0.8)
+  if shadow == "SHADOW" and fontFamily then
+    if fontFamily.GetFontObjectForAlphabet then
+      for _, a in ipairs(alphabet) do
+        local font = fontFamily:GetFontObjectForAlphabet(a)
+        if font and font.SetShadowOffset then
+          font:SetShadowOffset(1, -1)
+          font:SetShadowColor(0, 0, 0, 0.8)
+        end
+      end
+    elseif fontFamily.SetShadowOffset then
+      fontFamily:SetShadowOffset(1, -1)
+      fontFamily:SetShadowColor(0, 0, 0, 0.8)
     end
   end
 end

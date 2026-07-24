@@ -17,8 +17,12 @@ addonTable.CustomiseDialog.TYPE_LAYOUT = {
     {"RAID"},
     {"RAID_LEADER"},
     {"RAID_WARNING"},
-    {"INSTANCE_CHAT"},
-    {"INSTANCE_CHAT_LEADER"},
+    -- 3.3.5 carries battleground/instance chat under the legacy BATTLEGROUND group
+    -- (CHAT_MSG_BATTLEGROUND); a retail-backport client would use INSTANCE_CHAT. Offer whichever
+    -- this client actually defines, so BG chat can be routed to a custom tab -- before this it was
+    -- typed "BATTLEGROUND", which the UI never offered, so it only reached the catch-all main tab.
+    ChatTypeGroup["BATTLEGROUND"] and {"BATTLEGROUND", _G["BATTLEGROUND"] or "Battleground"} or {"INSTANCE_CHAT"},
+    ChatTypeGroup["BATTLEGROUND_LEADER"] and {"BATTLEGROUND_LEADER", _G["BATTLEGROUND_LEADER"] or "Battleground Leader"} or {"INSTANCE_CHAT_LEADER"},
   },
 
   CHANNELS = {},
@@ -116,7 +120,8 @@ function addonTable.CustomiseDialog.SetupTabFilters(parent)
       dropdown.DropDown:SetupMenu(function(_, rootDescription)
         fields = {}
         local map, count = addonTable.Messages:GetChannels()
-        for index = 1, count do
+        -- 3.3.5/Ascension: index 0 is a real channel here (Newcomers), so start at 0.
+        for index = 0, count do
           if map[index] then
             table.insert(fields, {map[index], map[index]})
           end

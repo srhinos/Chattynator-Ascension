@@ -715,6 +715,18 @@ function widgets.ShowDropdownMenu(owner, rootDescription)
   end
   menu._owner = owner
 
+  -- The popup is a UIParent-level singleton, so hiding the frame that opened it (e.g.
+  -- closing the settings dialog) leaves it stranded on screen -- and checkbox menus
+  -- keep themselves open on click, so the owner's own toggle is otherwise the only way
+  -- to dismiss them. OnHide fires on descendants when an ancestor hides, so this covers
+  -- the dialog closing. Hook once per owner; ShowDropdownMenu runs on every open.
+  if owner and not owner._chattynatorHideHooked and type(owner.HookScript) == "function" then
+    owner._chattynatorHideHooked = true
+    owner:HookScript("OnHide", function()
+      widgets.CloseDropdownMenu(owner)
+    end)
+  end
+
   local list = {}
   for _, e in ipairs(rootDescription.entries) do
     list[#list + 1] = e

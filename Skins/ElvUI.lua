@@ -1,53 +1,73 @@
 ---@class addonTableChattynator
 local addonTable = select(2, ...)
 
-local enableHooks = true
-
-local intensity = 1
-local hoverColor
-local voiceActiveColor = {r = 33/255, g = 209/255, b = 45/255}
-local flashTabColor = {r = 247/255, g = 222/255, b = 61/255}
-
-local E
-local S
-local B
-local LSM
-local CH
+local E, S, B, LSM, CH
+local hoverColor = {r = 1, g = 1, b = 1}
 
 local function ConvertTags(tags)
-  local res = {}
+  local result = {}
   for _, tag in ipairs(tags) do
-    res[tag] = true
+    result[tag] = true
   end
-  return res
+  return result
 end
+
+local enableHooks = false
+
+local intensity = 0.6
 
 local toUpdate = {}
 
-local UIScaleMonitor = CreateFrame("Frame")
-UIScaleMonitor:RegisterEvent("UI_SCALE_CHANGED")
-UIScaleMonitor:SetScript("OnEvent", function()
-  for _, func in ipairs(toUpdate) do
-    func()
+local eventFrame = CreateFrame("Frame")
+eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+eventFrame:RegisterEvent("UI_SCALE_CHANGED")
+eventFrame:SetScript("OnEvent", function(_, event)
+  if event == "PLAYER_ENTERING_WORLD" then
+    eventFrame:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    -- Defer one tick so ElvUI's API is ready, THEN run the queue. The queue must run after
+    -- enableHooks flips, or every styling hook early-returns and tabs stay unstyled until the
+    -- first click.
+    C_Timer.After(0.1, function()
+      enableHooks = true
+      for _, func in ipairs(toUpdate) do
+        func()
+      end
+    end)
+  elseif enableHooks then
+    -- UI_SCALE_CHANGED: re-run so tab widths recompute (restores the monitor the one-shot
+    -- PLAYER_ENTERING_WORLD frame replaced).
+    for _, func in ipairs(toUpdate) do
+      func()
+    end
   end
 end)
 
 -- Active only when ElvUI is the loaded skin. Textures are .tga; retail-only skin methods
 -- (GetUnboundedStringWidth) are shimmed in Core/Compat.lua.
--- 335-port (#1): the Alpha-animation from/to setters are NOT shared-metatable shims any
--- more (Cell feature-detects them); attached per-instance via Compat335SetupAlphaAnim.
 local skinners = {
   Button = function(frame)
-    S:HandleButton(frame)
+    if S and S.HandleButton then
+      S:HandleButton(frame)
+    end
   end,
   ButtonFrame = function(frame)
-    S:HandlePortraitFrame(frame)
+    if S and S.HandlePortraitFrame then
+      S:HandlePortraitFrame(frame)
+    elseif S and S.HandleFrame then
+      S:HandleFrame(frame)
+    else
+      frame:SetTemplate("Transparent")
+    end
   end,
   SearchBox = function(frame)
-    S:HandleEditBox(frame)
+    if S and S.HandleEditBox then
+      S:HandleEditBox(frame)
+    end
   end,
   EditBox = function(frame)
-    S:HandleEditBox(frame)
+    if S and S.HandleEditBox then
+      S:HandleEditBox(frame)
+    end
   end,
   ChatEditBox = function(editBox)
     for _, texName in ipairs({"Left", "Right", "Mid", "FocusLeft", "FocusRight", "FocusMid"}) do
@@ -57,15 +77,27 @@ local skinners = {
       end
     end
     editBox:SetHeight(22)
-    S:HandleEditBox(editBox)
-    editBox.backdrop:SetPoint("TOPLEFT", 1, 0)
-    editBox.backdrop:SetPoint("RIGHT", -1, 0)
+    if S and S.HandleEditBox then
+      S:HandleEditBox(editBox)
+    end
+    if editBox.backdrop then
+      editBox.backdrop:SetPoint("TOPLEFT", 1, 0)
+      editBox.backdrop:SetPoint("RIGHT", -1, 0)
+    end
+    local font = (CH and CH.db and CH.db.font) or (E and E.db and E.db.general and E.db.general.font) or "Friz Quadrata TT"
+    local fontOutline = (CH and CH.db and CH.db.fontOutline) or "NONE"
     local _, size = editBox:GetFont()
-    editBox:FontTemplate(LSM:Fetch('font', CH.db.font), size, CH.db.fontOutline)
-    addonTable.allChatFrames[1]:UpdateEditBox()
+    if LSM and editBox.FontTemplate then
+      editBox:FontTemplate(LSM:Fetch('font', font), size or 12, fontOutline)
+    end
+    if addonTable.allChatFrames and addonTable.allChatFrames[1] and addonTable.allChatFrames[1].UpdateEditBox then
+      addonTable.allChatFrames[1]:UpdateEditBox()
+    end
   end,
   TabButton = function(frame)
-    S:HandleTab(frame)
+    if S and S.HandleTab then
+      S:HandleTab(frame)
+    end
   end,
   ChatButton = function(button, tags)
     button:SetSize(26, 28)
@@ -73,110 +105,70 @@ local skinners = {
     button:ClearPushedTexture()
     button:ClearHighlightTexture()
 
+    if not button.Icon then
+      button.Icon = button:CreateTexture(nil, "OVERLAY")
+      local hasTag = function(target)
+        if not tags then return false end
+        if tags[target] then return true end
+        for _, v in ipairs(tags) do
+          if v == target then return true end
+        end
+        return false
+      end
+
+      if hasTag("search") then
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Search.tga")
+      elseif hasTag("copy") then
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Copy.tga")
+      elseif hasTag("settings") then
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\SettingsCog.tga")
+      elseif hasTag("scrollToEnd") then
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ScrollToBottom.tga")
+      elseif hasTag("menu") then
+        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatMenu.tga")
+      end
+      button.Icon:SetPoint("CENTER")
+      button.Icon:SetSize(16, 16)
+    end
+
     button:HookScript("OnEnter", function()
       if not enableHooks then
         return
       end
-      button.Icon:SetVertexColor(hoverColor.r, hoverColor.g, hoverColor.b)
+      if button.Icon then
+        button.Icon:SetVertexColor(hoverColor.r, hoverColor.g, hoverColor.b)
+      end
     end)
+
     button:HookScript("OnLeave", function()
       if not enableHooks then
         return
       end
-      button.Icon:SetVertexColor(intensity, intensity, intensity)
+      if button.Icon then
+        button.Icon:SetVertexColor(intensity, intensity, intensity)
+      end
     end)
 
+    -- Press-nudge on the buttons that actually exist here (menu/search/copy/settings/scroll);
+    -- the rewrite dropped it. Guard button.Icon since it's nil for buttons we don't skin.
     button:HookScript("OnMouseDown", function()
       if not enableHooks then
         return
       end
-      button.Icon:AdjustPointsOffset(2, -2)
+      if button.Icon then
+        button.Icon:AdjustPointsOffset(2, -2)
+      end
     end)
     button:HookScript("OnMouseUp", function()
       if not enableHooks then
         return
       end
-      button.Icon:AdjustPointsOffset(-2, 2)
+      if button.Icon then
+        button.Icon:AdjustPointsOffset(-2, 2)
+      end
     end)
 
-    if tags.toasts then
-      button.Icon = button.FriendsButton or button:CreateTexture(nil, "ARTWORK")
-      button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatSocial.tga")
-      button.Icon:SetVertexColor(intensity, intensity, intensity)
-      button.Icon:SetDrawLayer("ARTWORK")
-      button.Icon:SetSize(12, 12)
-      button.Icon:ClearAllPoints()
-      button.Icon:SetPoint("TOP", 0, -2);
-      (button.FriendCount or FriendsMicroButtonCount):SetTextColor(intensity, intensity, intensity)
-
-      button:HookScript("OnEnter", function()
-        if not enableHooks then
-          return
-        end
-        (button.FriendCount or FriendsMicroButtonCount):SetTextColor(hoverColor.r, hoverColor.g, hoverColor.b)
-      end)
-      button:HookScript("OnLeave", function()
-        if not enableHooks then
-          return
-        end
-        (button.FriendCount or FriendsMicroButtonCount):SetTextColor(intensity, intensity, intensity)
-      end)
-    elseif tags.channels then
-      hooksecurefunc(button, "SetIconToState", function(self, state)
-        if not enableHooks then
-          return
-        end
-        button:ClearNormalTexture()
-        button:ClearPushedTexture()
-        button:ClearHighlightTexture()
-        if state then
-          button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatChannelsVC.tga")
-          button.Icon:SetVertexColor(voiceActiveColor.r, voiceActiveColor.g, voiceActiveColor.b)
-        else
-          button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatChannels.tga")
-          button.Icon:SetVertexColor(intensity, intensity, intensity)
-        end
-        if button:IsMouseOver() then
-          button:GetScript("OnEnter")(button)
-        end
-      end)
-      button:HookScript("OnLeave", function()
-        if not enableHooks then
-          return
-        end
-        button:UpdateVisibleState()
-      end)
-      button:UpdateVisibleState()
-    elseif tags.voiceChatNoAudio or tags.voiceChatMuteMic then
-      hooksecurefunc(button, "SetIconToState", function(self, state)
-        if not enableHooks then
-          return
-        end
-        button:ClearNormalTexture()
-        button:ClearHighlightTexture()
-        button:ClearPushedTexture()
-        button.Icon:ClearAllPoints()
-        button.Icon:SetPoint("CENTER")
-      end)
-    elseif tags.menu then
-      button.Icon = button:CreateTexture(nil, "ARTWORK")
-      button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ChatMenu.tga")
-      button.Icon:SetVertexColor(intensity, intensity, intensity)
-      button.Icon:SetPoint("CENTER")
-      button.Icon:SetSize(15, 15)
-    else
-      button.Icon = button:CreateTexture(nil, "OVERLAY")
-      if tags.search then
-        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Search.tga")
-      elseif tags.copy then
-        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\Copy.tga")
-      elseif tags.settings then
-        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\SettingsCog.tga")
-      elseif tags.scrollToEnd then
-        button.Icon:SetTexture("Interface\\AddOns\\Chattynator\\Assets\\ScrollToBottom.tga")
-      end
-      button.Icon:SetPoint("CENTER")
-      button.Icon:SetSize(15, 15)
+    if button.Icon then
       button.Icon:SetVertexColor(intensity, intensity, intensity)
     end
   end,
@@ -191,24 +183,16 @@ local skinners = {
     tab.glow:SetPoint("BOTTOMLEFT", 8, -2)
     tab.glow:SetPoint("BOTTOMRIGHT", -8, -2)
     tab.glow:SetAlpha(0)
-    tab:GetFontString():SetWordWrap(false)
-    tab:GetFontString():SetNonSpaceWrap(false)
-    tab:GetFontString():FontTemplate(LSM:Fetch('font', CH.db.tabFont), CH.db.tabFontSize, CH.db.tabFontOutline)
-    local fsWidth
-    if tab.minWidth then
-      fsWidth = tab:GetFontString():GetUnboundedStringWidth() + addonTable.Constants.TabPadding
-    else
-      fsWidth = math.max(tab:GetFontString():GetUnboundedStringWidth(), not tab:GetText():find("|K") and addonTable.Constants.MinTabWidth or 70) + addonTable.Constants.TabPadding
-    end
-    tab:GetFontString():SetWidth(fsWidth)
-    tab:SetWidth(fsWidth)
-    local SetText = tab.SetText
-    local text = tab:GetText()
-    hooksecurefunc(tab, "SetText", function(_, cleanText)
-      if not enableHooks then
-        return
+    if tab:GetFontString() then
+      tab:GetFontString():SetWordWrap(false)
+      tab:GetFontString():SetNonSpaceWrap(false)
+      local tabFont = (CH and CH.db and CH.db.tabFont) or (E and E.db and E.db.general and E.db.general.font) or "Friz Quadrata TT"
+      local tabFontSize = (CH and CH.db and CH.db.tabFontSize) or 12
+      local tabFontOutline = (CH and CH.db and CH.db.tabFontOutline) or "NONE"
+      if LSM and tab:GetFontString().FontTemplate then
+        tab:GetFontString():FontTemplate(LSM:Fetch('font', tabFont), tabFontSize, tabFontOutline)
       end
-      text = cleanText
+      local fsWidth
       if tab.minWidth then
         fsWidth = tab:GetFontString():GetUnboundedStringWidth() + addonTable.Constants.TabPadding
       else
@@ -216,22 +200,46 @@ local skinners = {
       end
       tab:GetFontString():SetWidth(fsWidth)
       tab:SetWidth(fsWidth)
+    end
+    local SetText = tab.SetText
+    local text = tab:GetText()
+    hooksecurefunc(tab, "SetText", function(_, cleanText)
+      if not enableHooks then
+        return
+      end
+      text = cleanText
+      if tab:GetFontString() then
+        local fsWidth
+        if tab.minWidth then
+          fsWidth = tab:GetFontString():GetUnboundedStringWidth() + addonTable.Constants.TabPadding
+        else
+          fsWidth = math.max(tab:GetFontString():GetUnboundedStringWidth(), not tab:GetText():find("|K") and addonTable.Constants.MinTabWidth or 70) + addonTable.Constants.TabPadding
+        end
+        tab:GetFontString():SetWidth(fsWidth)
+        tab:SetWidth(fsWidth)
+      end
     end)
     hooksecurefunc(tab, "SetSelected", function(_, state)
       if not enableHooks then
         return
       end
+      local tabSelector = (CH and CH.db and CH.db.tabSelector) or "NONE"
+      local rgb = (E and E.media and E.media.rgbvaluecolor) or {1, 1, 1}
       if state then
-        tab:GetFontString():SetTextColor(1, 1, 1)
-        if CH.db.tabSelector ~= 'NONE' then
+        if tab:GetFontString() then
+          tab:GetFontString():SetTextColor(1, 1, 1)
+        end
+        if tabSelector ~= 'NONE' and CH and CH.TabStyles then
           local hexColor = E:RGBToHex(tab.color.r, tab.color.g, tab.color.b) or '|cff4cff4c'
-          tab:SetFormattedText(CH.TabStyles[CH.db.tabSelector] or CH.TabStyles.ARROW1, hexColor, text, hexColor)
+          tab:SetFormattedText(CH.TabStyles[tabSelector] or CH.TabStyles.ARROW1, hexColor, text, hexColor)
         else
           SetText(tab, text)
         end
       else
         tab:SetText(text)
-        tab:GetFontString():SetTextColor(unpack(E.media.rgbvaluecolor))
+        if tab:GetFontString() then
+          tab:GetFontString():SetTextColor(unpack(rgb))
+        end
       end
     end)
     if tab.selected ~= nil then
@@ -239,7 +247,9 @@ local skinners = {
     end
 
     hooksecurefunc(tab, "SetColor", function(_, r, g, b)
-      tab.glow:SetVertexColor(r, g, b)
+      if tab.glow then
+        tab.glow:SetVertexColor(r, g, b)
+      end
       tab:SetSelected(tab.selected)
     end)
     if tab.color then
@@ -250,7 +260,9 @@ local skinners = {
     tab.FlashAnimation:SetLooping("BOUNCE")
     local alpha2 = tab.FlashAnimation:CreateAnimation("Alpha")
     alpha2:SetChildKey("glow")
-    addonTable.Compat335SetupAlphaAnim(tab.FlashAnimation, alpha2) -- 335-port (#1): per-instance era from/to (no shared-metatable fill)
+    if addonTable.Compat335SetupAlphaAnim then
+      addonTable.Compat335SetupAlphaAnim(tab.FlashAnimation, alpha2)
+    end
     alpha2:SetFromAlpha(0)
     alpha2:SetToAlpha(1)
     alpha2:SetDuration(0.8)
@@ -274,18 +286,27 @@ local skinners = {
   ChatFrame = function(frame)
     if frame:GetID() == 1 then
       local function AnchorDataPanel()
+        if not (E and E.db and E.db.chat) then return end
         local position = addonTable.Config.Get(addonTable.Config.Options.EDIT_BOX_POSITION)
         local isAbove = E.db.chat.LeftChatDataPanelAnchor == 'ABOVE_CHAT'
-        LeftChatPanel:SetParent(addonTable.hiddenFrame)
-        LeftChatDataPanel:ClearAllPoints()
-        LeftChatDataPanel:SetParent(frame)
-        LeftChatDataPanel:SetPoint(isAbove and "BOTTOMLEFT" or "TOPLEFT", frame, isAbove and "TOPLEFT" or "BOTTOMLEFT", E.db.chat.hideChatToggles and -1 or 18, position == "bottom" and not isAbove and 22 or 0)
-        LeftChatDataPanel:SetPoint(isAbove and "BOTTOMRIGHT" or "TOPRIGHT", frame, isAbove and "TOPRIGHT" or "BOTTOMRIGHT", 1, position == "bottom" and not isAbove and 22 or 0)
-        LeftChatDataPanel:SetHeight(23)
-        LeftChatToggleButton:SetParent(frame)
-        local panelEnabled = E.db.datatexts.panels.LeftChatDataPanel.enable
+        if LeftChatPanel then
+          LeftChatPanel:SetParent(addonTable.hiddenFrame)
+        end
+        if LeftChatDataPanel then
+          LeftChatDataPanel:ClearAllPoints()
+          LeftChatDataPanel:SetParent(frame)
+          LeftChatDataPanel:SetPoint(isAbove and "BOTTOMLEFT" or "TOPLEFT", frame, isAbove and "TOPLEFT" or "BOTTOMLEFT", E.db.chat.hideChatToggles and -1 or 18, position == "bottom" and not isAbove and 22 or 0)
+          LeftChatDataPanel:SetPoint(isAbove and "BOTTOMRIGHT" or "TOPRIGHT", frame, isAbove and "TOPRIGHT" or "BOTTOMRIGHT", 1, position == "bottom" and not isAbove and 22 or 0)
+          LeftChatDataPanel:SetHeight(23)
+        end
+        if LeftChatToggleButton then
+          LeftChatToggleButton:SetParent(frame)
+        end
+        local panelEnabled = E.db.datatexts and E.db.datatexts.panels and E.db.datatexts.panels.LeftChatDataPanel and E.db.datatexts.panels.LeftChatDataPanel.enable
         frame:SetClampRectInsets(0, 0, panelEnabled and isAbove and 25 or 0, panelEnabled and position == "top" and not isAbove and -25 or 0)
-        frame:UpdateEditBox()
+        if frame.UpdateEditBox then
+          frame:UpdateEditBox()
+        end
       end
       local function PositionPanel()
         AnchorDataPanel()
@@ -298,49 +319,75 @@ local skinners = {
           end
         end)
       end
-      if not LeftChatDataPanel then
-        hooksecurefunc(E:GetModule('Layout'), "CreateChatPanels", PositionPanel)
-      else
-        PositionPanel()
+      local LayoutModule = E:GetModule('Layout')
+      if LayoutModule then
+        if not LeftChatDataPanel then
+          if LayoutModule.CreateChatPanels then
+            hooksecurefunc(LayoutModule, "CreateChatPanels", PositionPanel)
+          end
+        else
+          PositionPanel()
+        end
+        if LayoutModule.RepositionChatDataPanels then
+          hooksecurefunc(LayoutModule, "RepositionChatDataPanels", AnchorDataPanel)
+        end
+        if LayoutModule.RefreshChatMovers then
+          hooksecurefunc(LayoutModule, "RefreshChatMovers", AnchorDataPanel)
+        end
       end
-      hooksecurefunc(E:GetModule('Layout'), "RepositionChatDataPanels", AnchorDataPanel)
-      hooksecurefunc(E:GetModule('Layout'), "RefreshChatMovers", AnchorDataPanel)
     end
-    if E.db.chat.panelBackdrop ~= "HIDEBOTH" then
-      frame:CreateBackdrop('Transparent')
-      local panelColor = CH.db.panelColor
-      -- Guard the color set: a partial ElvUI backdrop may lack SetBackdropColor.
+    local panelBackdrop = (E and E.db and E.db.chat and E.db.chat.panelBackdrop) or "HIDEBOTH"
+    if panelBackdrop ~= "HIDEBOTH" then
+      if frame.CreateBackdrop then
+        frame:CreateBackdrop('Transparent')
+      end
+      local panelColor = (CH and CH.db and CH.db.panelColor) or {r = 0.1, g = 0.1, b = 0.1, a = 0.8}
       if frame.backdrop and frame.backdrop.SetBackdropColor then
         frame.backdrop:SetBackdropColor(panelColor.r, panelColor.g, panelColor.b, panelColor.a)
       end
     end
   end,
   TopTabButton = function(frame)
-    S:HandleTab(frame)
+    if S and S.HandleTab then
+      S:HandleTab(frame)
+    end
   end,
   TrimScrollBar = function(frame)
-    S:HandleTrimScrollBar(frame)
+    if S and S.HandleTrimScrollBar then
+      S:HandleTrimScrollBar(frame)
+    end
   end,
   CheckBox = function(frame)
-    S:HandleCheckBox(frame)
+    if S and S.HandleCheckBox then
+      S:HandleCheckBox(frame)
+    end
   end,
   Slider = function(frame)
-    S:HandleStepSlider(frame)
+    if S and S.HandleStepSlider then
+      S:HandleStepSlider(frame)
+    end
   end,
   InsetFrame = function(frame)
-    -- frame.NineSlice is retail-only (nil here); 3.3.5 takes the HandleInsetFrame branch.
     if frame.NineSlice then
       frame.NineSlice:SetTemplate("Transparent")
-    else
+    elseif S and S.HandleInsetFrame then
       S:HandleInsetFrame(frame)
+    else
+      frame:SetTemplate("Transparent")
     end
   end,
   Dropdown = function(button)
-    S:HandleDropDownBox(button)
+    if S and S.HandleDropDownBox then
+      S:HandleDropDownBox(button)
+    end
   end,
   Dialog = function(frame)
-    frame:StripTextures()
-    frame:SetTemplate('Transparent')
+    if frame.StripTextures then
+      frame:StripTextures()
+    end
+    if frame.SetTemplate then
+      frame:SetTemplate('Transparent')
+    end
   end,
   ResizeWidget = function(frame, tags)
     local tex = frame:CreateTexture(nil, "ARTWORK")
@@ -374,10 +421,15 @@ local function LoadSkin()
   B = E:GetModule('Bags')
   LSM = E.Libs.LSM
   CH = E:GetModule('Chat')
-  hoverColor = {r = E.media.rgbvaluecolor[1], g = E.media.rgbvaluecolor[2], b = E.media.rgbvaluecolor[3]}
-  local options = {CH.db.font, E.db.general.font, "Friz Quadrata TT"}
+  if E and E.media and E.media.rgbvaluecolor then
+    hoverColor = {r = E.media.rgbvaluecolor[1], g = E.media.rgbvaluecolor[2], b = E.media.rgbvaluecolor[3]}
+  else
+    hoverColor = {r = 1, g = 1, b = 1}
+  end
+  local fontVal = (CH and CH.db and CH.db.font) or (E and E.db and E.db.general and E.db.general.font) or "Friz Quadrata TT"
+  local options = {fontVal, "Friz Quadrata TT"}
   for _, font in ipairs(options) do
-    if LSM:Fetch("font", font, true) then
+    if LSM and LSM:Fetch("font", font, true) then
       addonTable.Core.OverwriteDefaultFont(font)
       break
     end
